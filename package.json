@@ -1,5 +1,15 @@
 {
-  "name": "generative-art-template",
-  "private": true
+  "name": "sculpture-generator-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop voxel/isometric form and pen-mark generator",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "electron .",
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^32.0.0"
+  }
 }
 

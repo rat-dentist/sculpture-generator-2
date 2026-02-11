@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sculpture Generator Desktop</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="controls">
+        <header>
+          <h1>Iso Plot Studio</h1>
+          <p>Form engine + mark engine for pen-ready SVG.</p>
+        </header>
+
+        <section>
+          <h2>Generate</h2>
+          <div class="row">
+            <label for="seed">Seed</label>
+            <input id="seed" type="number" value="1042" />
+          </div>
+          <div class="button-row">
+            <button id="btn-new-seed" type="button">Generate New</button>
+            <button id="btn-rebuild" type="button">Rebuild</button>
+          </div>
+        </section>
+
+        <section>
+          <h2>Form</h2>
+          <div class="grid-row">
+            <label for="grid-width">W</label>
+            <input id="grid-width" type="number" min="4" max="30" value="10" />
+            <label for="grid-depth">D</label>
+            <input id="grid-depth" type="number" min="4" max="30" value="10" />
+            <label for="grid-height">H</label>
+            <input id="grid-height" type="number" min="4" max="40" value="12" />
+          </div>
+          <div class="row">
+            <label for="mass-count">Masses</label>
+            <input id="mass-count" type="number" min="1" max="16" value="4" />
+          </div>
+          <div class="row">
+            <label for="carve-count">Carves</label>
+            <input id="carve-count" type="number" min="0" max="24" value="5" />
+          </div>
+          <div class="row">
+            <label for="bridge-count">Bridges</label>
+            <input id="bridge-count" type="number" min="0" max="12" value="3" />
+          </div>
+          <div class="row">
+            <label for="support-ratio">Support</label>
+            <input id="support-ratio" type="number" min="0" max="1" step="0.05" value="0.2" />
+          </div>
+        </section>
+
+        <section>
+          <h2>View</h2>
+          <div class="row">
+            <label for="view-yaw">Yaw</label>
+            <input id="view-yaw" type="range" min="0" max="360" step="1" value="45" />
+          </div>
+          <div class="row">
+            <label for="view-scale">Scale</label>
+            <input id="view-scale" type="range" min="12" max="70" step="1" value="30" />
+          </div>
+        </section>
+
+        <section>
+          <h2>Shading</h2>
+          <div class="row">
+            <label for="shade-top">Top</label>
+            <select id="shade-top">
+              <option value="none">None</option>
+              <option value="hatch">Hatch</option>
+              <option value="crosshatch">Crosshatch</option>
+              <option value="stipple">Stipple</option>
+              <option value="contour" selected>Contour Rings</option>
+            </select>
+          </div>
+          <div class="row">
+            <label for="shade-left">Left</label>
+            <select id="shade-left">
+              <option value="none">None</option>
+              <option value="hatch">Hatch</option>
+              <option value="crosshatch" selected>Crosshatch</option>
+              <option value="stipple">Stipple</option>
+              <option value="contour">Contour Rings</option>
+            </select>
+          </div>
+          <div class="row">
+            <label for="shade-right">Right</label>
+            <select id="shade-right">
+              <option value="none">None</option>
+              <option value="hatch" selected>Hatch</option>
+              <option value="crosshatch">Crosshatch</option>
+              <option value="stipple">Stipple</option>
+              <option value="contour">Contour Rings</option>
+            </select>
+          </div>
+          <div class="row">
+            <label for="hatch-spacing">Hatch Gap</label>
+            <input id="hatch-spacing" type="number" min="2" max="24" step="0.5" value="5" />
+          </div>
+          <div class="row">
+            <label for="hatch-angle">Hatch Angle</label>
+            <input id="hatch-angle" type="number" min="0" max="180" step="1" value="25" />
+          </div>
+          <div class="row">
+            <label for="contour-step">Contour Step</label>
+            <input id="contour-step" type="number" min="2" max="20" step="0.5" value="4" />
+          </div>
+          <div class="row">
+            <label for="stipple-spacing">Stipple Gap</label>
+            <input id="stipple-spacing" type="number" min="2" max="20" step="0.5" value="6" />
+          </div>
+          <div class="row">
+            <label for="max-strokes">Max Strokes</label>
+            <input id="max-strokes" type="number" min="200" max="40000" step="100" value="7000" />
+          </div>
+          <div class="row">
+            <label for="min-segment">Min Segment</label>
+            <input id="min-segment" type="number" min="0.1" max="12" step="0.1" value="0.8" />
+          </div>
+          <div class="row check-row">
+            <label for="shadow-ground">Ground Shadow</label>
+            <input id="shadow-ground" type="checkbox" checked />
+          </div>
+        </section>
+
+        <section>
+          <h2>Preview Layers</h2>
+          <div class="row check-row">
+            <label for="show-faces">Face Fill</label>
+            <input id="show-faces" type="checkbox" checked />
+          </div>
+          <div class="row check-row">
+            <label for="show-outline">Pen A Outline</label>
+            <input id="show-outline" type="checkbox" checked />
+          </div>
+          <div class="row check-row">
+            <label for="show-internal">Internal Edges</label>
+            <input id="show-internal" type="checkbox" checked />
+          </div>
+          <div class="row check-row">
+            <label for="show-midtone">Pen B Midtone</label>
+            <input id="show-midtone" type="checkbox" checked />
+          </div>
+          <div class="row check-row">
+            <label for="show-dense">Pen C Dense</label>
+            <input id="show-dense" type="checkbox" checked />
+          </div>
+        </section>
+
+        <section>
+          <h2>Export</h2>
+          <div class="button-row">
+            <button id="btn-export" type="button">Export SVG</button>
+          </div>
+          <p class="note">SVG includes grouped layers for multi-pen plotting.</p>
+        </section>
+      </aside>
+
+      <main class="preview-pane">
+        <div class="top-bar">
+          <div class="chips">
+            <span>Pen A: outline</span>
+            <span>Pen B: midtone</span>
+            <span>Pen C: dense/detail</span>
+          </div>
+          <p id="status-line">Ready</p>
+        </div>
+        <div id="preview-host" class="preview-host"></div>
+      </main>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
