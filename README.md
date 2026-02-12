@@ -6,8 +6,9 @@ Desktop app for generating voxel-based isometric forms and plotter-friendly pen 
 
 - Form engine:
   - voxel occupancy grid (`W x D x H`)
-  - mass union + carving + bridges
-  - stability cleanup for unsupported floating cells
+  - deterministic multi-pass theme pipeline (base massing, structural additions, erosion, industrial greebles, artifact cues)
+  - connectivity-preserving erosion and integrity repair (component bridging + pinhole filling)
+  - validation/re-roll loop to keep forms single-component and watertight at voxel-surface extraction stage
   - merged exposed-face meshing (large planar faces, not tiny per-voxel faces)
 - Mark engine:
   - hatch
@@ -45,7 +46,8 @@ npm run dev
 - `electron/main.js`: desktop shell + save dialog IPC
 - `electron/preload.js`: secure bridge for SVG save
 - `ui/app.js`: UI orchestration and state
-- `ui/engine/form-engine.js`: voxel form generation
+- `ui/engine/form-engine.js`: form generation entrypoint
+- `ui/engine/geometry-themes.js`: themed geometry passes + validation/repair
 - `ui/engine/mesher.js`: exposed face extraction + greedy merge
 - `ui/engine/projection.js`: isometric projection + face visibility
 - `ui/engine/mark-engine.js`: hatch/crosshatch/stipple/contour stroke generation
