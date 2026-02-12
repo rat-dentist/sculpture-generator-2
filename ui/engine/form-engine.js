@@ -140,6 +140,124 @@ function carveVolumes(grid, params, rng) {
   }
 }
 
+
+function addTowers(grid, params, rng) {
+  const minBase = 1;
+  const maxBase = Math.max(2, Math.floor(Math.min(params.width, params.depth) * 0.25));
+
+  for (let i = 0; i < params.towerCount; i += 1) {
+    const w = randomInt(rng, minBase, maxBase);
+    const d = randomInt(rng, minBase, maxBase);
+    const h = randomInt(rng, Math.max(3, Math.floor(params.height * 0.45)), Math.max(4, params.height));
+    const x = randomInt(rng, 0, Math.max(0, params.width - w));
+    const y = randomInt(rng, 0, Math.max(0, params.depth - d));
+
+    let z = sampleFootprintHeight(grid, x, y, w, d);
+    if (rng() > params.verticalBias) {
+      z = Math.max(0, z - randomInt(rng, 0, 2));
+    }
+
+    z = clamp(z, 0, Math.max(0, params.height - h));
+    grid.fillCuboid(x, y, z, w, d, h, true);
+  }
+}
+
+function addTerraces(grid, params, rng) {
+  const attempts = Math.max(1, Math.floor(params.massCount + params.towerCount));
+
+  for (let i = 0; i < attempts; i += 1) {
+    if (rng() > params.terraceRate) {
+      continue;
+    }
+
+    const w = randomInt(rng, 2, Math.max(3, Math.floor(params.width * 0.55)));
+    const d = randomInt(rng, 2, Math.max(3, Math.floor(params.depth * 0.55)));
+    const h = randomInt(rng, 1, 2);
+    const x = randomInt(rng, 0, Math.max(0, params.width - w));
+    const y = randomInt(rng, 0, Math.max(0, params.depth - d));
+    const z = clamp(sampleFootprintHeight(grid, x, y, w, d), 1, Math.max(1, params.height - h));
+
+    grid.fillCuboid(x, y, z, w, d, h, true);
+  }
+}
+
+function addCantilevers(grid, params, rng) {
+  const attempts = Math.max(1, Math.floor(params.bridgeCount + params.spliceCount));
+
+  for (let i = 0; i < attempts; i += 1) {
+    if (rng() > params.cantileverRate) {
+      continue;
+    }
+
+    const alongX = rng() < 0.5;
+    const span = alongX
+      ? randomInt(rng, Math.max(2, Math.floor(params.width * 0.25)), Math.max(3, Math.floor(params.width * 0.8)))
+      : randomInt(rng, Math.max(2, Math.floor(params.depth * 0.25)), Math.max(3, Math.floor(params.depth * 0.8)));
+    const thickness = randomInt(rng, 1, 2);
+    const h = randomInt(rng, 1, 2);
+    const z = randomInt(rng, Math.max(1, Math.floor(params.height * 0.3)), Math.max(2, params.height - h));
+
+    if (alongX) {
+      const w = span;
+      const d = thickness;
+      const x = randomInt(rng, 0, Math.max(0, params.width - w));
+      const y = randomInt(rng, 0, Math.max(0, params.depth - d));
+      grid.fillCuboid(x, y, z, w, d, h, true);
+      continue;
+    }
+
+    const w = thickness;
+    const d = span;
+    const x = randomInt(rng, 0, Math.max(0, params.width - w));
+    const y = randomInt(rng, 0, Math.max(0, params.depth - d));
+    grid.fillCuboid(x, y, z, w, d, h, true);
+  }
+}
+
+function carveNotches(grid, params, rng) {
+  for (let i = 0; i < params.notchCount; i += 1) {
+    const side = randomInt(rng, 0, 3);
+    const w = randomInt(rng, 1, Math.max(2, Math.floor(params.width * 0.25)));
+    const d = randomInt(rng, 1, Math.max(2, Math.floor(params.depth * 0.25)));
+    const h = randomInt(rng, 2, Math.max(3, Math.floor(params.height * 0.75)));
+    const z = randomInt(rng, 0, Math.max(0, params.height - h));
+
+    if (side === 0) {
+      grid.fillCuboid(0, randomInt(rng, 0, Math.max(0, params.depth - d)), z, w, d, h, false);
+      continue;
+    }
+
+    if (side === 1) {
+      grid.fillCuboid(Math.max(0, params.width - w), randomInt(rng, 0, Math.max(0, params.depth - d)), z, w, d, h, false);
+      continue;
+    }
+
+    if (side === 2) {
+      grid.fillCuboid(randomInt(rng, 0, Math.max(0, params.width - w)), 0, z, w, d, h, false);
+      continue;
+    }
+
+    grid.fillCuboid(randomInt(rng, 0, Math.max(0, params.width - w)), Math.max(0, params.depth - d), z, w, d, h, false);
+  }
+}
+
+function addSplices(grid, params, rng) {
+  for (let i = 0; i < params.spliceCount; i += 1) {
+    const w = randomInt(rng, 1, Math.max(2, Math.floor(params.width * 0.35)));
+    const d = randomInt(rng, 1, Math.max(2, Math.floor(params.depth * 0.35)));
+    const h = randomInt(rng, 1, 3);
+    const x = randomInt(rng, 0, Math.max(0, params.width - w));
+    const y = randomInt(rng, 0, Math.max(0, params.depth - d));
+    const z = randomInt(rng, 1, Math.max(1, params.height - h));
+
+    if (rng() < 0.5) {
+      grid.fillCuboid(x, y, z, w, d, h, true);
+    } else {
+      grid.fillCuboid(x, y, z, w, d, h, false);
+    }
+  }
+}
+
 function supportRatio(grid, x, y, z) {
   const checks = [
     [0, 0],
@@ -283,8 +401,13 @@ export function generateForm(params) {
   grid.fillCuboid(plinthX, plinthY, 0, plinthW, plinthD, 1, true);
 
   addMasses(grid, params, rng);
+  addTowers(grid, params, rng);
   addBridges(grid, params, rng);
+  addCantilevers(grid, params, rng);
+  addTerraces(grid, params, rng);
   carveVolumes(grid, params, rng);
+  carveNotches(grid, params, rng);
+  addSplices(grid, params, rng);
   pruneUnsupported(grid, clamp(params.supportRatio, 0, 1), 4, rng);
   pruneFloatingComponents(grid);
 

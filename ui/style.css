@@ -133,6 +133,11 @@ button:hover {
 .button-row {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.button-row > * {
+  min-width: 0;
 }
 
 .button-row button {
