@@ -21,7 +21,8 @@
             <input id="seed" type="number" value="1042" />
           </div>
           <div class="button-row">
-            <button id="btn-new-seed" type="button">Generate New</button>
+            <button id="btn-new-seed" type="button">New Seed</button>
+            <button id="btn-generate" type="button">Generate</button>
             <button id="btn-rebuild" type="button">Rebuild</button>
           </div>
         </section>
@@ -51,6 +52,31 @@
           <div class="row">
             <label for="support-ratio">Support</label>
             <input id="support-ratio" type="number" min="0" max="1" step="0.05" value="0.2" />
+          </div>
+
+          <div class="row">
+            <label for="tower-count">Towers</label>
+            <input id="tower-count" type="number" min="0" max="20" value="3" />
+          </div>
+          <div class="row">
+            <label for="terrace-rate">Terrace Rate</label>
+            <input id="terrace-rate" type="number" min="0" max="1" step="0.05" value="0.35" />
+          </div>
+          <div class="row">
+            <label for="cantilever-rate">Cantilever Rate</label>
+            <input id="cantilever-rate" type="number" min="0" max="1" step="0.05" value="0.3" />
+          </div>
+          <div class="row">
+            <label for="notch-count">Notches</label>
+            <input id="notch-count" type="number" min="0" max="24" value="6" />
+          </div>
+          <div class="row">
+            <label for="splice-count">Splices</label>
+            <input id="splice-count" type="number" min="0" max="16" value="4" />
+          </div>
+          <div class="row">
+            <label for="vertical-bias">Vertical Bias</label>
+            <input id="vertical-bias" type="number" min="0" max="1" step="0.05" value="0.62" />
           </div>
         </section>
 
@@ -125,6 +151,49 @@
           <div class="row check-row">
             <label for="shadow-ground">Ground Shadow</label>
             <input id="shadow-ground" type="checkbox" checked />
+          </div>
+          <div class="row">
+            <label for="sun-azimuth">Sun Azimuth</label>
+            <input id="sun-azimuth" type="range" min="0" max="360" step="1" value="315" />
+          </div>
+          <div class="row">
+            <label for="sun-elevation">Sun Elevation</label>
+            <input id="sun-elevation" type="range" min="1" max="89" step="1" value="24" />
+          </div>
+          <div class="row">
+            <label for="shadow-mode">Shadow Mode</label>
+            <select id="shadow-mode">
+              <option value="hard" selected>Hard</option>
+              <option value="atmospheric">Atmospheric</option>
+            </select>
+          </div>
+          <div class="row">
+            <label for="shadow-hatch-mode">Hatch Align</label>
+            <select id="shadow-hatch-mode">
+              <option value="perpendicular" selected>Perpendicular to Light</option>
+              <option value="parallel">Parallel to Light</option>
+            </select>
+          </div>
+          <div class="row">
+            <label for="shadow-strength">Shadow Strength</label>
+            <input id="shadow-strength" type="number" min="0.1" max="3" step="0.1" value="1" />
+          </div>
+          <div class="row">
+            <label for="shadow-softness">Softness</label>
+            <input id="shadow-softness" type="number" min="0" max="1" step="0.05" value="0.35" />
+          </div>
+          <div class="row">
+            <label for="shadow-fade-start">Fade Start</label>
+            <input id="shadow-fade-start" type="number" min="0" max="600" step="5" value="38" />
+          </div>
+          <div class="row">
+            <label for="shadow-fade-length">Fade Length</label>
+            <input id="shadow-fade-length" type="number" min="1" max="800" step="5" value="140" />
+          </div>
+
+          <div class="row check-row">
+            <label for="shadow-debug">Shadow Debug</label>
+            <input id="shadow-debug" type="checkbox" />
           </div>
         </section>
 

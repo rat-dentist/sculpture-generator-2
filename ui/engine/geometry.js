@@ -228,3 +228,46 @@ export function clipSegmentToPolygon(start, end, polygon) {
 
   return segments;
 }
+
+export function subtractSegmentByPolygon(start, end, polygon) {
+  const cuts = [0, 1];
+
+  for (let i = 0; i < polygon.length; i += 1) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    const intersection = intersectSegmentsWithT(start, end, a, b);
+
+    if (intersection) {
+      cuts.push(intersection.t);
+    }
+  }
+
+  cuts.sort((left, right) => left - right);
+
+  const unique = [];
+  for (const value of cuts) {
+    if (!unique.length || Math.abs(value - unique[unique.length - 1]) > 1e-4) {
+      unique.push(value);
+    }
+  }
+
+  const visibleSegments = [];
+
+  for (let i = 0; i < unique.length - 1; i += 1) {
+    const t0 = unique[i];
+    const t1 = unique[i + 1];
+
+    if (t1 - t0 < 1e-4) {
+      continue;
+    }
+
+    const mid = lerpPoint(start, end, (t0 + t1) * 0.5);
+    if (pointInPolygon(mid, polygon)) {
+      continue;
+    }
+
+    visibleSegments.push([lerpPoint(start, end, t0), lerpPoint(start, end, t1)]);
+  }
+
+  return visibleSegments;
+}
