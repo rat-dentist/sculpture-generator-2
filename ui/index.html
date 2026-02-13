@@ -19,6 +19,20 @@
           <div class="row">
             <label for="seed">Seed</label>
             <input id="seed" type="number" value="1042" />
+            <span class="value"></span>
+          </div>
+          <div class="row">
+            <label for="shader-style">Shader Style</label>
+            <select id="shader-style">
+              <option value="off" selected>Off</option>
+              <option value="line-light">Line Hatch - Light</option>
+              <option value="line-medium">Line Hatch - Medium</option>
+              <option value="line-heavy">Line Hatch - Heavy</option>
+              <option value="ascii-light">ASCII - Light</option>
+              <option value="ascii-medium">ASCII - Medium</option>
+              <option value="ascii-heavy">ASCII - Heavy</option>
+            </select>
+            <span class="value"></span>
           </div>
           <div class="button-row">
             <button id="btn-generate" type="button">Generate</button>
@@ -38,14 +52,6 @@
           <div class="row check-row">
             <label for="show-internal">Internal Edges</label>
             <input id="show-internal" type="checkbox" checked />
-          </div>
-          <div class="row check-row">
-            <label for="show-midtone">Pen B Midtone</label>
-            <input id="show-midtone" type="checkbox" />
-          </div>
-          <div class="row check-row">
-            <label for="show-dense">Pen C Dense</label>
-            <input id="show-dense" type="checkbox" />
           </div>
           <div class="row check-row">
             <label for="show-occlusion-debug">Show Occlusion Debug</label>
@@ -83,8 +89,7 @@
         <div class="top-bar">
           <div class="chips">
             <span>Pen A: outline</span>
-            <span>Pen B: midtone</span>
-            <span>Pen C: dense/detail</span>
+            <span>Shader: preset dropdown</span>
           </div>
           <p id="status-line">Ready</p>
         </div>

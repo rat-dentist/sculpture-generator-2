@@ -20,8 +20,7 @@ Desktop app for generating voxel-based isometric forms and plotter-friendly pen 
 - Export:
   - SVG grouped by pen layer:
     - `pen_a_outline`
-    - `pen_b_midtone`
-    - `pen_c_dense`
+    - `pen_shader`
   - STL fused solid:
     - built from voxel boundary surface extraction (not per-box soup)
     - internal touching faces removed before triangulation

@@ -239,6 +239,7 @@ function checked(id) {
 
 function readSettings() {
   const seed = integer("seed", 1042);
+  const shaderPreset = document.getElementById("shader-style")?.value || "off";
   const showOcclusionDebug = checked("show-occlusion-debug");
   const showOcclusionText = checked("show-occlusion-text");
   const showEdgePreMerge = checked("show-edge-premerge");
@@ -294,15 +295,7 @@ function readSettings() {
     mark: {
       seed,
       occlusionDebug: debugEnabled,
-      modeByFace: {
-        top: "none",
-        left: "none",
-        right: "none"
-      },
-      hatchSpacing: 5,
-      hatchAngle: 25,
-      contourStep: 4,
-      stippleSpacing: 6,
+      shaderPreset,
       maxStrokes: 7000,
       minSegment: 0.8
     },
@@ -310,8 +303,7 @@ function readSettings() {
       showFaces: checked("show-faces"),
       showOutline: checked("show-outline"),
       showInternal: checked("show-internal"),
-      showMidtone: checked("show-midtone"),
-      showDense: checked("show-dense"),
+      shaderEnabled: shaderPreset !== "off",
       showOcclusionDebug: showOcclusionDebug,
       showOcclusionText: showOcclusionText,
       showEdgePreMerge: showEdgePreMerge,
@@ -529,7 +521,7 @@ function render(forceFormRebuild = false, interactive = viewState.dragging) {
     };
     refs.previewHost.innerHTML = buildPreviewSvg(scene, settings.preview, viewport);
 
-    let baseStatus = `faces ${scene.stats.faceCount} | strokes ${scene.stats.totalStrokes} | clipped ${scene.stats.clippedStrokes} | A ${scene.stats.outlineStrokes + scene.stats.internalStrokes} | B ${scene.stats.midtoneStrokes} | C ${scene.stats.denseStrokes}`;
+    let baseStatus = `faces ${scene.stats.faceCount} | strokes ${scene.stats.totalStrokes} | clipped ${scene.stats.clippedStrokes} | A ${scene.stats.outlineStrokes + scene.stats.internalStrokes} | shader ${scene.stats.shaderStrokes}`;
     const segmentStats = scene.debug?.occlusion?.segmentStats;
     if (segmentStats) {
       baseStatus += ` | seg ${segmentStats.before}->${segmentStats.after} | micro ${segmentStats.removedMicro}`;
@@ -720,7 +712,8 @@ async function exportCurrentSvg() {
   const settings = cache.lastSettings || readSettings();
   const svg = buildExportSvg(cache.scene, {
     title: "Iso Plot Export",
-    seed: settings.seed
+    seed: settings.seed,
+    shaderEnabled: settings.mark.shaderPreset !== "off"
   });
   const defaultName = makeDefaultExportName("svg");
 

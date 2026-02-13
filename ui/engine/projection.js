@@ -96,6 +96,25 @@ function fixedShadeKey(normal) {
   return "y_neg";
 }
 
+function toneIndexFromShadeKey(shadeKey) {
+  if (shadeKey === "z_pos") {
+    return 0;
+  }
+  if (shadeKey === "x_pos") {
+    return 1;
+  }
+  if (shadeKey === "y_pos") {
+    return 2;
+  }
+  if (shadeKey === "x_neg") {
+    return 3;
+  }
+  if (shadeKey === "y_neg") {
+    return 4;
+  }
+  return 5;
+}
+
 function faceBounds(face) {
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
@@ -355,10 +374,16 @@ function classifyFace(normal, view) {
   const facing = rotatedNormal.x + rotatedNormal.y + rotatedNormal.z;
 
   if (facing < -1e-4) {
-    return { visible: false, faceType: "none", shadeKey: "none" };
+    return { visible: false, faceType: "none", shadeKey: "none", toneIndex: 0 };
   }
 
-  return { visible: true, faceType: fixedFaceType(normal), shadeKey: fixedShadeKey(normal) };
+  const shadeKey = fixedShadeKey(normal);
+  return {
+    visible: true,
+    faceType: fixedFaceType(normal),
+    shadeKey,
+    toneIndex: toneIndexFromShadeKey(shadeKey)
+  };
 }
 
 export function projectFaces(faces, view, options = {}) {
@@ -400,6 +425,7 @@ export function projectFaces(faces, view, options = {}) {
       id: face.id,
       faceType: classification.faceType,
       shadeKey: classification.shadeKey,
+      toneIndex: classification.toneIndex,
       area: face.area,
       normal: { ...face.normal },
       worldCorners,

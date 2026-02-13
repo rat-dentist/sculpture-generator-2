@@ -51,35 +51,11 @@ function sceneCenter(scene) {
 }
 
 function faceFill(face) {
-  const key = face.shadeKey || face.faceType;
-  if (key === "z_pos") {
-    return "#e2e2e2";
-  }
-  if (key === "x_pos") {
-    return "#cfcfcf";
-  }
-  if (key === "y_pos") {
-    return "#bdbdbd";
-  }
-  if (key === "x_neg") {
-    return "#a7a7a7";
-  }
-  if (key === "y_neg") {
-    return "#939393";
-  }
-  if (key === "z_neg") {
-    return "#7d7d7d";
-  }
-  if (key === "top") {
-    return "#dddddd";
-  }
-  if (key === "left") {
-    return "#bcbcbc";
-  }
-  if (key === "right") {
-    return "#969696";
-  }
-  return "#d0d0d0";
+  const palette = ["#e6e6e6", "#d4d4d4", "#c3c3c3", "#b0b0b0", "#9a9a9a", "#848484"];
+  const tone = Number.isFinite(face.toneIndex)
+    ? Math.max(0, Math.min(5, Math.round(face.toneIndex)))
+    : 2;
+  return palette[tone];
 }
 
 function pathFromStrokes(strokes, dx, dy) {
@@ -124,8 +100,7 @@ export function buildPreviewSvg(scene, toggles, viewport = {}) {
 
   const outlinePath = pathFromStrokes(scene.layers.outline, dx, dy);
   const internalPath = pathFromStrokes(scene.layers.internal, dx, dy);
-  const midtonePath = pathFromStrokes(scene.layers.midtone, dx, dy);
-  const densePath = pathFromStrokes(scene.layers.dense, dx, dy);
+  const shaderPath = pathFromStrokes(scene.layers.shader, dx, dy);
   const debugBoxesPath = pathFromStrokes(scene.debug?.occlusion?.faceBoxes || [], dx, dy);
   const debugSilhouettePath = pathFromStrokes(scene.debug?.occlusion?.edgeSilhouette || [], dx, dy);
   const debugInternalPath = pathFromStrokes(scene.debug?.occlusion?.edgeInternal || [], dx, dy);
@@ -161,8 +136,7 @@ export function buildPreviewSvg(scene, toggles, viewport = {}) {
   ${toggles.showFaces ? `<g id="faces" stroke="none">${facePolygons}</g>` : ""}
   ${toggles.showOutline ? `<path d="${outlinePath}" fill="none" stroke="#121212" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" />` : ""}
   ${toggles.showInternal ? `<path d="${internalPath}" fill="none" stroke="#707070" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round" />` : ""}
-  ${toggles.showMidtone ? `<path d="${midtonePath}" fill="none" stroke="#3d3d3d" stroke-width="0.56" stroke-linecap="butt" stroke-linejoin="round" />` : ""}
-  ${toggles.showDense ? `<path d="${densePath}" fill="none" stroke="#191919" stroke-width="0.48" stroke-linecap="butt" stroke-linejoin="round" />` : ""}
+  ${toggles.shaderEnabled ? `<path d="${shaderPath}" fill="none" stroke="#222222" stroke-width="0.56" stroke-linecap="butt" stroke-linejoin="round" />` : ""}
   ${toggles.showOcclusionDebug && debugBoxesPath ? `<path d="${debugBoxesPath}" fill="none" stroke="#2563eb" stroke-width="0.45" stroke-dasharray="2 2" />` : ""}
   ${toggles.showOcclusionDebug && debugSilhouettePath ? `<path d="${debugSilhouettePath}" fill="none" stroke="#15803d" stroke-width="0.9" />` : ""}
   ${toggles.showOcclusionDebug && debugInternalPath ? `<path d="${debugInternalPath}" fill="none" stroke="#dc2626" stroke-width="0.9" />` : ""}
@@ -185,12 +159,12 @@ export function buildExportSvg(scene, meta) {
 
   const outlinePath = pathFromStrokes(scene.layers.outline, dx, dy);
   const internalPath = pathFromStrokes(scene.layers.internal, dx, dy);
-  const midtonePath = pathFromStrokes(scene.layers.midtone, dx, dy);
-  const densePath = pathFromStrokes(scene.layers.dense, dx, dy);
+  const shaderPath = pathFromStrokes(scene.layers.shader, dx, dy);
 
   const stamp = new Date().toISOString();
   const title = meta?.title || "Iso Plot Export";
   const seed = meta?.seed ?? "unknown";
+  const shaderEnabled = meta?.shaderEnabled !== false;
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${format(metrics.width)}" height="${format(metrics.height)}" viewBox="0 0 ${format(metrics.width)} ${format(metrics.height)}">
@@ -200,11 +174,8 @@ export function buildExportSvg(scene, meta) {
     <path d="${outlinePath}" />
     <path d="${internalPath}" stroke-width="0.65" stroke="#444444" />
   </g>
-  <g id="pen_b_midtone" fill="none" stroke="#222222" stroke-width="0.52" stroke-linecap="butt" stroke-linejoin="round">
-    <path d="${midtonePath}" />
-  </g>
-  <g id="pen_c_dense" fill="none" stroke="#181818" stroke-width="0.44" stroke-linecap="butt" stroke-linejoin="round">
-    <path d="${densePath}" />
-  </g>
+  ${shaderEnabled ? `<g id="pen_shader" fill="none" stroke="#222222" stroke-width="0.52" stroke-linecap="butt" stroke-linejoin="round">
+    <path d="${shaderPath}" />
+  </g>` : ""}
 </svg>`;
 }

@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "electron .",
     "start": "electron .",
-    "test:stl": "node --experimental-default-type=module scripts/test-stl-manifold.mjs"
+    "test:stl": "node --experimental-default-type=module scripts/test-stl-manifold.mjs",
+    "test:shader": "node --experimental-default-type=module scripts/test-shader-presets.mjs"
   },
   "devDependencies": {
     "electron": "^32.0.0"

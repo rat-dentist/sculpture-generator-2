@@ -1,14 +1,9 @@
 import {
   boundsFromPolygons,
-  clipInfiniteLineToPolygon,
-  clipSegmentToPolygon,
   distance,
-  dot2,
-  pointInPolygon,
-  polygonCentroid,
   polylineLength
 } from "./geometry.js";
-import { createRng } from "./random.js";
+import { generateFaceShaderStrokes } from "./shader-styles.js";
 
 function nearlyEqual(a, b, eps = 1e-6) {
   return Math.abs(a - b) <= eps;
@@ -115,48 +110,6 @@ function collectVisibleEdges(faces) {
   return edges;
 }
 
-function resolveAngle(faceType, baseAngle) {
-  if (faceType === "top") {
-    return baseAngle;
-  }
-
-  if (faceType === "left") {
-    return baseAngle + 34;
-  }
-
-  return baseAngle - 34;
-}
-
-function generateHatchSegments(polygon, angleDeg, spacing) {
-  const angle = (angleDeg * Math.PI) / 180;
-  const direction = { x: Math.cos(angle), y: Math.sin(angle) };
-  const normal = { x: -Math.sin(angle), y: Math.cos(angle) };
-
-  let min = Number.POSITIVE_INFINITY;
-  let max = Number.NEGATIVE_INFINITY;
-
-  for (const point of polygon) {
-    const projection = dot2(point, normal);
-    min = Math.min(min, projection);
-    max = Math.max(max, projection);
-  }
-
-  const segments = [];
-  for (let projection = min - spacing; projection <= max + spacing; projection += spacing) {
-    const linePoint = {
-      x: normal.x * projection,
-      y: normal.y * projection
-    };
-
-    const clipped = clipInfiniteLineToPolygon(linePoint, direction, polygon);
-    if (clipped) {
-      segments.push(clipped);
-    }
-  }
-
-  return segments;
-}
-
 function makeDot(center, radius, steps = 8) {
   const points = [];
 
@@ -171,69 +124,6 @@ function makeDot(center, radius, steps = 8) {
   return points;
 }
 
-function generateStippleDots(polygon, spacing, seed) {
-  const rng = createRng(seed);
-  const bounds = boundsFromPolygons([polygon]);
-  const lines = [];
-  const radius = Math.max(0.4, spacing * 0.18);
-
-  for (let y = bounds.minY; y <= bounds.maxY; y += spacing) {
-    for (let x = bounds.minX; x <= bounds.maxX; x += spacing) {
-      const jitterX = (rng() - 0.5) * spacing * 0.5;
-      const jitterY = (rng() - 0.5) * spacing * 0.5;
-      const point = { x: x + jitterX, y: y + jitterY };
-
-      if (!pointInPolygon(point, polygon)) {
-        continue;
-      }
-
-      lines.push(makeDot(point, radius));
-    }
-  }
-
-  return lines;
-}
-
-function generateContourSegments(polygon, step, seed) {
-  const rng = createRng(seed);
-  const centroid = polygonCentroid(polygon);
-  const biasPoint = polygon[Math.floor(rng() * polygon.length)] || centroid;
-  const anchor = {
-    x: centroid.x * 0.64 + biasPoint.x * 0.36,
-    y: centroid.y * 0.64 + biasPoint.y * 0.36
-  };
-
-  let maxRadius = 0;
-  for (const point of polygon) {
-    maxRadius = Math.max(maxRadius, distance(anchor, point));
-  }
-
-  const segments = [];
-
-  for (let radius = step; radius <= maxRadius + step; radius += step) {
-    const samples = Math.max(24, Math.round((Math.PI * 2 * radius) / 5));
-
-    for (let i = 0; i < samples; i += 1) {
-      const t0 = (Math.PI * 2 * i) / samples;
-      const t1 = (Math.PI * 2 * (i + 1)) / samples;
-      const start = {
-        x: anchor.x + Math.cos(t0) * radius,
-        y: anchor.y + Math.sin(t0) * radius
-      };
-      const end = {
-        x: anchor.x + Math.cos(t1) * radius,
-        y: anchor.y + Math.sin(t1) * radius
-      };
-
-      const clipped = clipSegmentToPolygon(start, end, polygon);
-      for (const segment of clipped) {
-        segments.push(segment);
-      }
-    }
-  }
-
-  return segments;
-}
 
 function addStroke(layers, layerName, points, closed, controls, budget, options = {}) {
   if (!points || points.length < 2) {
@@ -1095,8 +985,7 @@ export function buildStrokeScene(faces, controls, options = {}) {
   const layers = {
     outline: [],
     internal: [],
-    midtone: [],
-    dense: []
+    shader: []
   };
 
   const budget = {
@@ -1105,6 +994,12 @@ export function buildStrokeScene(faces, controls, options = {}) {
     maxStrokes: fastMode ? Math.min(controls.maxStrokes, 4200) : controls.maxStrokes
   };
   const showDebug = Boolean(controls.occlusionDebug) && !fastMode;
+  const shaderDebug = {
+    facesShaded: 0,
+    cellsTested: 0,
+    emittedPreClip: 0,
+    emittedPostClip: 0
+  };
 
   const edges = collectVisibleEdges(faces);
   for (const edge of edges) {
@@ -1118,58 +1013,26 @@ export function buildStrokeScene(faces, controls, options = {}) {
 
   if (!fastMode) {
     for (const face of faces) {
-      const mode = controls.modeByFace[face.faceType] || "none";
-
-      if (mode === "none") {
+      if (face.faceType === "top") {
         continue;
       }
-
-      if (mode === "hatch" || mode === "crosshatch") {
-        const angleA = resolveAngle(face.faceType, controls.hatchAngle);
-        const hatchA = generateHatchSegments(face.points, angleA, controls.hatchSpacing);
-        for (const line of hatchA) {
-          addStroke(layers, "midtone", line, false, controls, budget, {
-            depthA: face.depth,
-            depthB: face.depth,
-            faceIds: [face.id]
-          });
-        }
-
-        if (mode === "crosshatch") {
-          const hatchB = generateHatchSegments(face.points, angleA + 90, controls.hatchSpacing * 1.1);
-          for (const line of hatchB) {
-            addStroke(layers, "dense", line, false, controls, budget, {
-              depthA: face.depth,
-              depthB: face.depth,
-              faceIds: [face.id]
-            });
-          }
-        }
-
+      if (controls.shaderPreset === "off") {
         continue;
       }
-
-      if (mode === "stipple") {
-        const dots = generateStippleDots(face.points, controls.stippleSpacing, controls.seed + face.id * 13);
-        for (const dot of dots) {
-          addStroke(layers, "dense", dot, true, controls, budget, {
-            depthA: face.depth,
-            depthB: face.depth,
-            faceIds: [face.id]
-          });
-        }
-        continue;
+      const shader = generateFaceShaderStrokes(face, controls);
+      const strokes = shader.strokes || [];
+      if (strokes.length) {
+        shaderDebug.facesShaded += 1;
       }
-
-      if (mode === "contour") {
-        const contours = generateContourSegments(face.points, controls.contourStep, controls.seed + face.id * 29);
-        for (const segment of contours) {
-          addStroke(layers, "dense", segment, false, controls, budget, {
-            depthA: face.depth,
-            depthB: face.depth,
-            faceIds: [face.id]
-          });
-        }
+      shaderDebug.cellsTested += shader.stats?.cellsTested || 0;
+      shaderDebug.emittedPreClip += shader.stats?.emittedPreClip || 0;
+      shaderDebug.emittedPostClip += shader.stats?.emittedPostClip || 0;
+      for (const stroke of strokes) {
+        addStroke(layers, "shader", stroke, false, controls, budget, {
+          depthA: face.depth,
+          depthB: face.depth,
+          faceIds: [face.id]
+        });
       }
     }
   }
@@ -1223,7 +1086,7 @@ export function buildStrokeScene(faces, controls, options = {}) {
         minPixelLength: 0.5
       }
   });
-  const midtoneOcclusion = occludeLayer(layers.midtone, depthBuffer, sampleDebug, {
+  const shaderOcclusion = occludeLayer(layers.shader, depthBuffer, sampleDebug, {
     clip: fastMode
       ? {
         minSamples: 5,
@@ -1231,20 +1094,22 @@ export function buildStrokeScene(faces, controls, options = {}) {
       }
       : {}
   });
-  const denseOcclusion = occludeLayer(layers.dense, depthBuffer, sampleDebug, {
-    clip: fastMode
-      ? {
-        minSamples: 5,
-        sampleSpacingPx: 3
-      }
-      : {}
-  });
   const occluded = {
     outline: outlineOcclusion.strokes,
     internal: internalOcclusion.strokes,
-    midtone: midtoneOcclusion.strokes,
-    dense: denseOcclusion.strokes
+    shader: shaderOcclusion.strokes
   };
+
+  if (showDebug && controls.shaderPreset !== "off") {
+    // eslint-disable-next-line no-console
+    console.debug("shader", {
+      preset: controls.shaderPreset,
+      facesShaded: shaderDebug.facesShaded,
+      cellsTested: shaderDebug.cellsTested,
+      strokesBeforeClip: shaderDebug.emittedPostClip,
+      strokesAfterOcclusion: shaderOcclusion.strokes.length
+    });
+  }
   const segmentsBeforeMerge = (outlineOcclusion.debug?.segmentsBefore || 0) + (internalOcclusion.debug?.segmentsBefore || 0);
   const segmentsAfterMerge = (outlineOcclusion.debug?.segmentsAfter || 0) + (internalOcclusion.debug?.segmentsAfter || 0);
   const removedMicroSegments = (outlineOcclusion.debug?.removedMicroSegments || 0) + (internalOcclusion.debug?.removedMicroSegments || 0);
@@ -1314,8 +1179,7 @@ export function buildStrokeScene(faces, controls, options = {}) {
     layers: {
       outline: stripDepth(occluded.outline),
       internal: stripDepth(occluded.internal),
-      midtone: stripDepth(occluded.midtone),
-      dense: stripDepth(occluded.dense)
+      shader: stripDepth(occluded.shader)
     },
     stats: {
       faceCount: faces.length,
@@ -1323,8 +1187,7 @@ export function buildStrokeScene(faces, controls, options = {}) {
       clippedStrokes: budget.clipped,
       outlineStrokes: occluded.outline.length,
       internalStrokes: occluded.internal.length,
-      midtoneStrokes: occluded.midtone.length,
-      denseStrokes: occluded.dense.length
+      shaderStrokes: occluded.shader.length
     },
     debug
   };
