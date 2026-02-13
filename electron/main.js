@@ -2,6 +2,24 @@ const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 
+function pad2(value) {
+  return String(value).padStart(2, "0");
+}
+
+function formatMinuteTimestamp(date = new Date()) {
+  const year = date.getFullYear();
+  const month = pad2(date.getMonth() + 1);
+  const day = pad2(date.getDate());
+  const hour = pad2(date.getHours());
+  const minute = pad2(date.getMinutes());
+  return `${year}${month}${day}-${hour}${minute}`;
+}
+
+function defaultExportName(extension) {
+  const appName = (app.getName() || "sculpture-generator-desktop").toLowerCase().replace(/[^\w.-]+/g, "-");
+  return `${appName}-${formatMinuteTimestamp()}.${extension}`;
+}
+
 function createMainWindow() {
   const window = new BrowserWindow({
     width: 1500,
@@ -21,7 +39,7 @@ function createMainWindow() {
 
 ipcMain.handle("save-svg", async (_event, payload) => {
   const svg = typeof payload?.svg === "string" ? payload.svg : "";
-  const defaultName = typeof payload?.defaultName === "string" ? payload.defaultName : `plot-${Date.now()}.svg`;
+  const defaultName = typeof payload?.defaultName === "string" ? payload.defaultName : defaultExportName("svg");
 
   if (!svg.trim()) {
     return { ok: false, error: "Empty SVG payload." };
@@ -41,6 +59,31 @@ ipcMain.handle("save-svg", async (_event, payload) => {
   }
 
   fs.writeFileSync(filePath, svg, "utf8");
+  return { ok: true, path: filePath };
+});
+
+ipcMain.handle("save-stl", async (_event, payload) => {
+  const stl = typeof payload?.stl === "string" ? payload.stl : "";
+  const defaultName = typeof payload?.defaultName === "string" ? payload.defaultName : defaultExportName("stl");
+
+  if (!stl.trim()) {
+    return { ok: false, error: "Empty STL payload." };
+  }
+
+  const outputDir = path.join(process.cwd(), "output");
+  fs.mkdirSync(outputDir, { recursive: true });
+
+  const { canceled, filePath } = await dialog.showSaveDialog({
+    title: "Export STL",
+    defaultPath: path.join(outputDir, defaultName),
+    filters: [{ name: "STL", extensions: ["stl"] }]
+  });
+
+  if (canceled || !filePath) {
+    return { ok: false, canceled: true };
+  }
+
+  fs.writeFileSync(filePath, stl, "utf8");
   return { ok: true, path: filePath };
 });
 

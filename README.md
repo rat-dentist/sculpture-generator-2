@@ -22,6 +22,10 @@ Desktop app for generating voxel-based isometric forms and plotter-friendly pen 
     - `pen_a_outline`
     - `pen_b_midtone`
     - `pen_c_dense`
+  - STL fused solid:
+    - built from voxel boundary surface extraction (not per-box soup)
+    - internal touching faces removed before triangulation
+    - manifold validation (closed edges, no degenerate/duplicate faces, single component)
 - Desktop UX:
   - seed + regenerate
   - rotation (yaw) + scale
@@ -36,6 +40,12 @@ npm install
 npm run dev
 ```
 
+## STL Validation Test
+
+```bash
+npm run test:stl
+```
+
 ## VS Code one-click launch
 
 - NPM Scripts panel: run `dev` (play icon).
@@ -44,11 +54,12 @@ npm run dev
 ## File layout
 
 - `electron/main.js`: desktop shell + save dialog IPC
-- `electron/preload.js`: secure bridge for SVG save
+- `electron/preload.js`: secure bridge for SVG/STL save
 - `ui/app.js`: UI orchestration and state
 - `ui/engine/form-engine.js`: form generation entrypoint
 - `ui/engine/geometry-themes.js`: themed geometry passes + validation/repair
 - `ui/engine/mesher.js`: exposed face extraction + greedy merge
+- `ui/engine/mesh-export.js`: fused face triangulation + STL export
 - `ui/engine/projection.js`: isometric projection + face visibility
 - `ui/engine/mark-engine.js`: hatch/crosshatch/stipple/contour stroke generation
 - `ui/engine/svg-export.js`: preview SVG + export SVG assembly

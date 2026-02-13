@@ -21,179 +21,7 @@
             <input id="seed" type="number" value="1042" />
           </div>
           <div class="button-row">
-            <button id="btn-new-seed" type="button">New Seed</button>
             <button id="btn-generate" type="button">Generate</button>
-            <button id="btn-rebuild" type="button">Rebuild</button>
-          </div>
-        </section>
-
-        <section>
-          <h2>Form</h2>
-          <div class="grid-row">
-            <label for="grid-width">W</label>
-            <input id="grid-width" type="number" min="4" max="30" value="10" />
-            <label for="grid-depth">D</label>
-            <input id="grid-depth" type="number" min="4" max="30" value="10" />
-            <label for="grid-height">H</label>
-            <input id="grid-height" type="number" min="4" max="40" value="12" />
-          </div>
-          <div class="row">
-            <label for="mass-count">Masses</label>
-            <input id="mass-count" type="number" min="1" max="16" value="4" />
-          </div>
-          <div class="row">
-            <label for="carve-count">Carves</label>
-            <input id="carve-count" type="number" min="0" max="24" value="5" />
-          </div>
-          <div class="row">
-            <label for="bridge-count">Bridges</label>
-            <input id="bridge-count" type="number" min="0" max="12" value="3" />
-          </div>
-          <div class="row">
-            <label for="support-ratio">Support</label>
-            <input id="support-ratio" type="number" min="0" max="1" step="0.05" value="0.2" />
-          </div>
-
-          <div class="row">
-            <label for="tower-count">Towers</label>
-            <input id="tower-count" type="number" min="0" max="20" value="3" />
-          </div>
-          <div class="row">
-            <label for="terrace-rate">Terrace Rate</label>
-            <input id="terrace-rate" type="number" min="0" max="1" step="0.05" value="0.35" />
-          </div>
-          <div class="row">
-            <label for="cantilever-rate">Cantilever Rate</label>
-            <input id="cantilever-rate" type="number" min="0" max="1" step="0.05" value="0.3" />
-          </div>
-          <div class="row">
-            <label for="notch-count">Notches</label>
-            <input id="notch-count" type="number" min="0" max="24" value="6" />
-          </div>
-          <div class="row">
-            <label for="splice-count">Splices</label>
-            <input id="splice-count" type="number" min="0" max="16" value="4" />
-          </div>
-          <div class="row">
-            <label for="vertical-bias">Vertical Bias</label>
-            <input id="vertical-bias" type="number" min="0" max="1" step="0.05" value="0.62" />
-          </div>
-        </section>
-
-        <section>
-          <h2>View</h2>
-          <div class="row">
-            <label for="view-yaw">Yaw</label>
-            <input id="view-yaw" type="range" min="0" max="360" step="1" value="45" />
-          </div>
-          <div class="row">
-            <label for="view-scale">Scale</label>
-            <input id="view-scale" type="range" min="12" max="70" step="1" value="30" />
-          </div>
-        </section>
-
-        <section>
-          <h2>Shading</h2>
-          <div class="row">
-            <label for="shade-top">Top</label>
-            <select id="shade-top">
-              <option value="none">None</option>
-              <option value="hatch">Hatch</option>
-              <option value="crosshatch">Crosshatch</option>
-              <option value="stipple">Stipple</option>
-              <option value="contour" selected>Contour Rings</option>
-            </select>
-          </div>
-          <div class="row">
-            <label for="shade-left">Left</label>
-            <select id="shade-left">
-              <option value="none">None</option>
-              <option value="hatch">Hatch</option>
-              <option value="crosshatch" selected>Crosshatch</option>
-              <option value="stipple">Stipple</option>
-              <option value="contour">Contour Rings</option>
-            </select>
-          </div>
-          <div class="row">
-            <label for="shade-right">Right</label>
-            <select id="shade-right">
-              <option value="none">None</option>
-              <option value="hatch" selected>Hatch</option>
-              <option value="crosshatch">Crosshatch</option>
-              <option value="stipple">Stipple</option>
-              <option value="contour">Contour Rings</option>
-            </select>
-          </div>
-          <div class="row">
-            <label for="hatch-spacing">Hatch Gap</label>
-            <input id="hatch-spacing" type="number" min="2" max="24" step="0.5" value="5" />
-          </div>
-          <div class="row">
-            <label for="hatch-angle">Hatch Angle</label>
-            <input id="hatch-angle" type="number" min="0" max="180" step="1" value="25" />
-          </div>
-          <div class="row">
-            <label for="contour-step">Contour Step</label>
-            <input id="contour-step" type="number" min="2" max="20" step="0.5" value="4" />
-          </div>
-          <div class="row">
-            <label for="stipple-spacing">Stipple Gap</label>
-            <input id="stipple-spacing" type="number" min="2" max="20" step="0.5" value="6" />
-          </div>
-          <div class="row">
-            <label for="max-strokes">Max Strokes</label>
-            <input id="max-strokes" type="number" min="200" max="40000" step="100" value="7000" />
-          </div>
-          <div class="row">
-            <label for="min-segment">Min Segment</label>
-            <input id="min-segment" type="number" min="0.1" max="12" step="0.1" value="0.8" />
-          </div>
-          <div class="row check-row">
-            <label for="shadow-ground">Ground Shadow</label>
-            <input id="shadow-ground" type="checkbox" checked />
-          </div>
-          <div class="row">
-            <label for="sun-azimuth">Sun Azimuth</label>
-            <input id="sun-azimuth" type="range" min="0" max="360" step="1" value="315" />
-          </div>
-          <div class="row">
-            <label for="sun-elevation">Sun Elevation</label>
-            <input id="sun-elevation" type="range" min="1" max="89" step="1" value="24" />
-          </div>
-          <div class="row">
-            <label for="shadow-mode">Shadow Mode</label>
-            <select id="shadow-mode">
-              <option value="hard" selected>Hard</option>
-              <option value="atmospheric">Atmospheric</option>
-            </select>
-          </div>
-          <div class="row">
-            <label for="shadow-hatch-mode">Hatch Align</label>
-            <select id="shadow-hatch-mode">
-              <option value="perpendicular" selected>Perpendicular to Light</option>
-              <option value="parallel">Parallel to Light</option>
-            </select>
-          </div>
-          <div class="row">
-            <label for="shadow-strength">Shadow Strength</label>
-            <input id="shadow-strength" type="number" min="0.1" max="3" step="0.1" value="1" />
-          </div>
-          <div class="row">
-            <label for="shadow-softness">Softness</label>
-            <input id="shadow-softness" type="number" min="0" max="1" step="0.05" value="0.35" />
-          </div>
-          <div class="row">
-            <label for="shadow-fade-start">Fade Start</label>
-            <input id="shadow-fade-start" type="number" min="0" max="600" step="5" value="38" />
-          </div>
-          <div class="row">
-            <label for="shadow-fade-length">Fade Length</label>
-            <input id="shadow-fade-length" type="number" min="1" max="800" step="5" value="140" />
-          </div>
-
-          <div class="row check-row">
-            <label for="shadow-debug">Shadow Debug</label>
-            <input id="shadow-debug" type="checkbox" />
           </div>
         </section>
 
@@ -205,7 +33,7 @@
           </div>
           <div class="row check-row">
             <label for="show-outline">Pen A Outline</label>
-            <input id="show-outline" type="checkbox" checked />
+            <input id="show-outline" type="checkbox" />
           </div>
           <div class="row check-row">
             <label for="show-internal">Internal Edges</label>
@@ -213,20 +41,41 @@
           </div>
           <div class="row check-row">
             <label for="show-midtone">Pen B Midtone</label>
-            <input id="show-midtone" type="checkbox" checked />
+            <input id="show-midtone" type="checkbox" />
           </div>
           <div class="row check-row">
             <label for="show-dense">Pen C Dense</label>
-            <input id="show-dense" type="checkbox" checked />
+            <input id="show-dense" type="checkbox" />
+          </div>
+          <div class="row check-row">
+            <label for="show-occlusion-debug">Show Occlusion Debug</label>
+            <input id="show-occlusion-debug" type="checkbox" />
+          </div>
+          <div class="row check-row">
+            <label for="show-occlusion-text">Show Occlusion Text</label>
+            <input id="show-occlusion-text" type="checkbox" />
+          </div>
+          <div class="row check-row">
+            <label for="show-edge-premerge">Show Edge Segments (Pre-Merge)</label>
+            <input id="show-edge-premerge" type="checkbox" />
+          </div>
+          <div class="row check-row">
+            <label for="show-edge-postmerge">Show Edge Segments (Post-Merge)</label>
+            <input id="show-edge-postmerge" type="checkbox" />
+          </div>
+          <div class="row check-row">
+            <label for="show-endpoint-clusters">Show Endpoint Clusters</label>
+            <input id="show-endpoint-clusters" type="checkbox" />
           </div>
         </section>
 
         <section>
           <h2>Export</h2>
           <div class="button-row">
-            <button id="btn-export" type="button">Export SVG</button>
+            <button id="btn-export-svg" type="button">Export SVG</button>
+            <button id="btn-export-stl" type="button">Export STL</button>
           </div>
-          <p class="note">SVG includes grouped layers for multi-pen plotting.</p>
+          <p class="note">SVG includes pen layers. STL exports a fused printable solid from touching voxels.</p>
         </section>
       </aside>
 

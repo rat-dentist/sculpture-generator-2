@@ -1,11 +1,11 @@
 :root {
-  --bg: #ddd7cd;
-  --panel: #1e1f22;
-  --panel-soft: #292b30;
-  --ink: #1b1b1b;
-  --line: #8f8a7f;
-  --text: #f2efe8;
-  --accent: #6d8f88;
+  --bg: #202632;
+  --panel: #121724;
+  --panel-soft: #1a2030;
+  --ink: #e5ecf5;
+  --line: #526077;
+  --text: #f0f4fa;
+  --accent: #2579ef;
   --paper: #f6f3ec;
 }
 
@@ -18,7 +18,7 @@ body {
   margin: 0;
   width: 100%;
   height: 100%;
-  background: radial-gradient(circle at top right, #e5dfd4, #c8c2b7 72%);
+  background: radial-gradient(circle at 20% 0%, #2f3b52, #171d29 74%);
   color: var(--ink);
   font-family: "Trebuchet MS", "Gill Sans", "Candara", sans-serif;
 }
@@ -32,11 +32,11 @@ body {
 }
 
 .controls {
-  background: linear-gradient(180deg, var(--panel), #17181a);
+  background: linear-gradient(180deg, #141a27, #101520);
   color: var(--text);
   padding: 16px 14px 24px;
   overflow-y: auto;
-  border-right: 2px solid #0f1012;
+  border-right: 1px solid #2e3a4f;
 }
 
 .controls header h1 {
@@ -54,34 +54,26 @@ body {
 }
 
 .controls section {
-  margin: 0 0 12px;
-  padding: 11px;
-  border: 1px solid #3b3e45;
-  border-radius: 10px;
-  background: linear-gradient(180deg, #2b2d32, #23252a);
+  margin: 0 0 14px;
+  padding: 14px;
+  border: 1px solid #3a465d;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #262d3f, #1f2635);
 }
 
 .controls h2 {
-  margin: 0 0 10px;
-  font-size: 0.84rem;
-  letter-spacing: 0.08em;
+  margin: 0 0 12px;
+  font-size: 1.04rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #b8d2cb;
+  color: #c5d9d1;
 }
 
 .row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 138px;
+  grid-template-columns: minmax(0, 1fr) 200px 44px;
   align-items: center;
-  gap: 8px;
-  margin: 0 0 8px;
-}
-
-.grid-row {
-  display: grid;
-  grid-template-columns: 18px 1fr 18px 1fr 18px 1fr;
-  align-items: center;
-  gap: 6px;
+  gap: 10px;
   margin: 0 0 10px;
 }
 
@@ -90,19 +82,21 @@ body {
 }
 
 label {
-  font-size: 0.82rem;
-  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 input,
 select,
 button {
-  border: 1px solid #4f535c;
-  background: #17191d;
+  border: 1px solid #495771;
+  background: #131926;
   color: #f4f1ea;
-  border-radius: 7px;
-  padding: 6px 8px;
-  font-size: 0.82rem;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
   font-family: "Consolas", "Lucida Console", monospace;
 }
 
@@ -114,16 +108,32 @@ input[type="checkbox"] {
 }
 
 input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
   padding: 0;
+  height: 10px;
+  border: none;
+  border-radius: 999px;
+  background: #d0d4db;
+  accent-color: var(--accent);
+}
+
+.value {
+  min-width: 44px;
+  text-align: right;
+  font-size: 1rem;
+  color: #d7dfec;
+  font-family: "Consolas", "Lucida Console", monospace;
 }
 
 button {
   cursor: pointer;
-  background: linear-gradient(180deg, #48655f, #314a45);
-  border-color: #3d5f58;
+  background: linear-gradient(180deg, #4d6f6a, #3a5b57);
+  border-color: #5f8f88;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   font-weight: 600;
+  min-height: 54px;
 }
 
 button:hover {
@@ -144,6 +154,43 @@ button:hover {
   flex: 1;
 }
 
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 10px;
+  border-radius: 999px;
+  background: #d0d4db;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  margin-top: -7px;
+  border: 2px solid #0f57c6;
+  background: #1b7df3;
+}
+
+input[type="range"]::-moz-range-track {
+  height: 10px;
+  border-radius: 999px;
+  background: #d0d4db;
+}
+
+input[type="range"]::-moz-range-progress {
+  height: 10px;
+  border-radius: 999px;
+  background: #1b7df3;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #0f57c6;
+  background: #1b7df3;
+}
+
 .note {
   margin: 8px 0 0;
   color: #bfbbb4;
@@ -162,7 +209,7 @@ button:hover {
       rgba(255, 255, 255, 0.22) 2px,
       rgba(255, 255, 255, 0.22) 10px
     ),
-    var(--bg);
+    #d2d8df;
 }
 
 .top-bar {

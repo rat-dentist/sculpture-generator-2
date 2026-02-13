@@ -6,7 +6,8 @@
   "main": "electron/main.js",
   "scripts": {
     "dev": "electron .",
-    "start": "electron ."
+    "start": "electron .",
+    "test:stl": "node --experimental-default-type=module scripts/test-stl-manifold.mjs"
   },
   "devDependencies": {
     "electron": "^32.0.0"
