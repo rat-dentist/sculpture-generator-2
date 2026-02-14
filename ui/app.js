@@ -245,6 +245,11 @@ function readSettings() {
   const showEdgePreMerge = checked("show-edge-premerge");
   const showEdgePostMerge = checked("show-edge-postmerge");
   const showEndpointClusters = checked("show-endpoint-clusters");
+  const showShaderIntegrityDebug = checked("show-shader-integrity-debug");
+  const showShaderFacePolygons = checked("show-shader-face-polygons");
+  const showShaderPreClip = checked("show-shader-preclip");
+  const showShaderPostFaceClip = checked("show-shader-postface");
+  const showShaderFinalClip = checked("show-shader-final");
   const debugEnabled = showOcclusionDebug
     || showOcclusionText
     || showEdgePreMerge
@@ -295,8 +300,9 @@ function readSettings() {
     mark: {
       seed,
       occlusionDebug: debugEnabled,
+      shaderIntegrityDebug: showShaderIntegrityDebug,
       shaderPreset,
-      maxStrokes: 7000,
+      maxStrokes: 3000,
       minSegment: 0.8
     },
     preview: {
@@ -308,7 +314,12 @@ function readSettings() {
       showOcclusionText: showOcclusionText,
       showEdgePreMerge: showEdgePreMerge,
       showEdgePostMerge: showEdgePostMerge,
-      showEndpointClusters: showEndpointClusters
+      showEndpointClusters: showEndpointClusters,
+      showShaderIntegrityDebug: showShaderIntegrityDebug,
+      showShaderFacePolygons: showShaderFacePolygons && showShaderIntegrityDebug,
+      showShaderPreClip: showShaderPreClip && showShaderIntegrityDebug,
+      showShaderPostFaceClip: showShaderPostFaceClip && showShaderIntegrityDebug,
+      showShaderFinalClip: showShaderFinalClip && showShaderIntegrityDebug
     }
   };
 }
@@ -411,7 +422,8 @@ const cache = {
   rawFaces: [],
   scene: null,
   lastSettings: null,
-  formRebuilt: false
+  formRebuilt: false,
+  lastRenderInteractive: false
 };
 
 function updateStatus(text) {
@@ -433,7 +445,7 @@ function buildScene(settings, forceFormRebuild = false, interactive = false) {
   const pivot = modelPivot(cache.rawFaces);
   const view = { ...settings.view, pivot };
   const projectedFaces = projectFaces(cache.rawFaces, view, {
-    fastOrder: false
+    fastOrder: interactive
   });
   cache.scene = buildStrokeScene(projectedFaces, {
     ...settings.mark,
@@ -443,6 +455,7 @@ function buildScene(settings, forceFormRebuild = false, interactive = false) {
   });
   cache.lastSettings = { ...settings, view };
   cache.formRebuilt = formRebuilt;
+  cache.lastRenderInteractive = interactive;
 
   return cache.scene;
 }
@@ -529,6 +542,10 @@ function render(forceFormRebuild = false, interactive = viewState.dragging) {
     if (segmentStats) {
       baseStatus += ` | seg ${segmentStats.before}->${segmentStats.after} | micro ${segmentStats.removedMicro}`;
     }
+    if (settings.preview.showShaderIntegrityDebug && scene.stats.shaderIntegrity) {
+      const si = scene.stats.shaderIntegrity;
+      baseStatus += ` | sh faces ${si.facesShaded}/${si.facesConsidered} pre ${si.marksGeneratedPreClip} face ${si.marksPostFaceClip} occ ${si.marksPostOcclusion} min ${si.marksRemovedMinSegment} budget ${si.marksRemovedBudget}`;
+    }
     if (interactive) {
       baseStatus += " | fast";
     }
@@ -541,11 +558,14 @@ function render(forceFormRebuild = false, interactive = viewState.dragging) {
 }
 
 let pendingForce = false;
+let pendingInteractive = false;
 let queued = false;
 let lastInteractiveRenderMs = 0;
+let interactiveSettleTimer = null;
 
-function scheduleRender(forceFormRebuild = false) {
+function scheduleRender(forceFormRebuild = false, interactive = viewState.dragging) {
   pendingForce = pendingForce || forceFormRebuild;
+  pendingInteractive = pendingInteractive || interactive;
   if (queued) {
     return;
   }
@@ -554,9 +574,23 @@ function scheduleRender(forceFormRebuild = false) {
   requestAnimationFrame(() => {
     queued = false;
     const force = pendingForce;
+    const runInteractive = pendingInteractive || viewState.dragging;
     pendingForce = false;
-    render(force, viewState.dragging);
+    pendingInteractive = false;
+    render(force, runInteractive);
   });
+}
+
+function scheduleSettledRender(delayMs = 140) {
+  if (interactiveSettleTimer !== null) {
+    window.clearTimeout(interactiveSettleTimer);
+  }
+  interactiveSettleTimer = window.setTimeout(() => {
+    interactiveSettleTimer = null;
+    if (!viewState.dragging) {
+      scheduleRender(false, false);
+    }
+  }, delayMs);
 }
 
 function updateValueBadges() {
@@ -627,7 +661,8 @@ function bindRotationControls() {
     const now = performance.now();
     if (now - lastInteractiveRenderMs >= 40) {
       lastInteractiveRenderMs = now;
-      scheduleRender(false);
+      scheduleRender(false, true);
+      scheduleSettledRender();
     }
   };
 
@@ -646,7 +681,7 @@ function bindRotationControls() {
     host.releasePointerCapture(event.pointerId);
     host.style.cursor = "grab";
     lastInteractiveRenderMs = 0;
-    scheduleRender(false);
+    scheduleRender(false, false);
   };
 
   const onPointerCancel = (event) => {
@@ -658,7 +693,7 @@ function bindRotationControls() {
     viewState.pointerButton = 0;
     host.style.cursor = "grab";
     lastInteractiveRenderMs = 0;
-    scheduleRender(false);
+    scheduleRender(false, false);
   };
 
   const onWheel = (event) => {
@@ -683,7 +718,8 @@ function bindRotationControls() {
     const now = performance.now();
     if (now - lastInteractiveRenderMs >= 40) {
       lastInteractiveRenderMs = now;
-      scheduleRender(false);
+      scheduleRender(false, true);
+      scheduleSettledRender();
     }
   };
 
@@ -702,7 +738,7 @@ function bindRotationControls() {
     viewState.pointerButton = 0;
     host.style.cursor = "grab";
     lastInteractiveRenderMs = 0;
-    scheduleRender(false);
+    scheduleRender(false, false);
   });
 
   host.addEventListener("dblclick", () => {
@@ -713,13 +749,17 @@ function bindRotationControls() {
     viewState.panX = 0;
     viewState.panY = 0;
     lastInteractiveRenderMs = 0;
-    scheduleRender(false);
+    scheduleRender(false, false);
   });
 }
 
 function ensureRenderableScene() {
   if (!cache.scene || !cache.lastSettings) {
-    render(true);
+    render(true, false);
+    return;
+  }
+  if (cache.lastRenderInteractive) {
+    render(false, false);
   }
 }
 
@@ -804,18 +844,20 @@ function wireEvents() {
     control.addEventListener("input", () => {
       updateValueBadges();
       const now = performance.now();
-    if (now - lastInteractiveRenderMs >= 40) {
-      lastInteractiveRenderMs = now;
-      scheduleRender(false);
-    }
+      if (now - lastInteractiveRenderMs >= 40) {
+        lastInteractiveRenderMs = now;
+        scheduleRender(false, true);
+        scheduleSettledRender();
+      }
     });
     control.addEventListener("change", () => {
       updateValueBadges();
       const now = performance.now();
-    if (now - lastInteractiveRenderMs >= 40) {
-      lastInteractiveRenderMs = now;
-      scheduleRender(false);
-    }
+      if (now - lastInteractiveRenderMs >= 40) {
+        lastInteractiveRenderMs = now;
+        scheduleRender(false, true);
+      }
+      scheduleSettledRender();
     });
   }
 

@@ -87,7 +87,7 @@ function testShaderStylesEmit() {
     shaderCoarse: false
   };
 
-  for (const shaderPreset of ["lines", "crosshatch", "ascii", "ordered-dither", "crt-scanline", "crt-mask"]) {
+  for (const shaderPreset of ["lines", "crosshatch", "contour-bands", "ascii", "ordered-dither", "error-diffusion", "stipple"]) {
     const shader = generateFaceShaderStrokes(face, {
       ...controlsBase,
       shaderPreset

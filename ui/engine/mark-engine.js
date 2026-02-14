@@ -1,5 +1,7 @@
 import {
   boundsFromPolygons,
+  clipSegmentToPolygon,
+  subtractSegmentByPolygon,
   distance,
   polylineLength
 } from "./geometry.js";
@@ -11,6 +13,10 @@ function nearlyEqual(a, b, eps = 1e-6) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
 }
 
 function normalize3(vector) {
@@ -134,7 +140,8 @@ function addStroke(layers, layerName, points, closed, controls, budget, options 
     return;
   }
 
-  if (budget.used >= controls.maxStrokes) {
+  const maxStrokes = Number.isFinite(budget?.maxStrokes) ? budget.maxStrokes : controls.maxStrokes;
+  if (budget.used >= maxStrokes) {
     budget.clipped += 1;
     return;
   }
@@ -632,11 +639,21 @@ function snapEndpoints(strokes, tolerance) {
 }
 
 function mergeCollinearStrokes(strokes, options) {
+  if (strokes.length <= 1) {
+    return strokes;
+  }
+
+  const maxStrokesForMerge = Math.max(200, Math.round(options?.maxStrokesForMerge ?? 1400));
+  if (strokes.length > maxStrokesForMerge) {
+    return strokes;
+  }
+
   const angleTolerance = (options?.angleToleranceDeg ?? 0.9) * (Math.PI / 180);
   const cosTolerance = Math.cos(angleTolerance);
   const joinTolerance = options?.joinTolerance ?? 0.35;
   const lineTolerance = options?.lineTolerance ?? joinTolerance * 0.75;
-  const maxIterations = options?.maxIterations ?? 2400;
+  const maxIterations = options?.maxIterations
+    ?? Math.min(640, Math.max(96, Math.round(strokes.length * 0.85)));
 
   const canMerge = (a, b) => {
     const da = segmentDirection(a);
@@ -817,6 +834,248 @@ function removeMicroSegments(strokes, minimumLength) {
   return { strokes: kept, removed };
 }
 
+function polygonArea2(points) {
+  if (!points || points.length < 3) {
+    return 0;
+  }
+
+  let area2 = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const j = (i + 1) % points.length;
+    area2 += points[i].x * points[j].y - points[j].x * points[i].y;
+  }
+  return Math.abs(area2) * 0.5;
+}
+
+function faceBounds2D(face) {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  for (const point of face.points || []) {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+
+  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+    return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+  }
+
+  return { minX, minY, maxX, maxY };
+}
+
+function segmentBounds2D(a, b) {
+  return {
+    minX: Math.min(a.x, b.x),
+    minY: Math.min(a.y, b.y),
+    maxX: Math.max(a.x, b.x),
+    maxY: Math.max(a.y, b.y)
+  };
+}
+
+function boundsOverlap2D(a, b, eps = 1e-5) {
+  if (a.maxX < b.minX - eps || b.maxX < a.minX - eps) {
+    return false;
+  }
+  if (a.maxY < b.minY - eps || b.maxY < a.minY - eps) {
+    return false;
+  }
+  return true;
+}
+
+function depthPlaneFromProjectedFace(face) {
+  const points = face.points3 || [];
+  if (points.length < 3) {
+    return null;
+  }
+
+  const p0 = points[0];
+  const p1 = points[1];
+  const p2 = points[2];
+  const den = p0.x * (p1.y - p2.y) + p1.x * (p2.y - p0.y) + p2.x * (p0.y - p1.y);
+  if (Math.abs(den) < 1e-8) {
+    return null;
+  }
+
+  const a = (p0.depth * (p1.y - p2.y) + p1.depth * (p2.y - p0.y) + p2.depth * (p0.y - p1.y)) / den;
+  const b = (p0.depth * (p2.x - p1.x) + p1.depth * (p0.x - p2.x) + p2.depth * (p1.x - p0.x)) / den;
+  const c = (p0.depth * (p1.x * p2.y - p2.x * p1.y)
+    + p1.depth * (p2.x * p0.y - p0.x * p2.y)
+    + p2.depth * (p0.x * p1.y - p1.x * p0.y)) / den;
+
+  return { a, b, c };
+}
+
+function depthAtProjectedFace(face, point) {
+  if (!face._depthPlane) {
+    face._depthPlane = depthPlaneFromProjectedFace(face);
+  }
+  if (!face._depthPlane) {
+    return Number.isFinite(face.depth) ? face.depth : Number.NEGATIVE_INFINITY;
+  }
+  return face._depthPlane.a * point.x + face._depthPlane.b * point.y + face._depthPlane.c;
+}
+
+function addDebugStroke(target, a, b, max = 2600) {
+  if (!target || target.length >= max) {
+    return;
+  }
+  target.push({
+    points: [{ x: a.x, y: a.y }, { x: b.x, y: b.y }],
+    closed: false
+  });
+}
+
+function clipShaderCandidatesToFace(candidates, face, options = {}) {
+  const minimumLength = Math.max(0.05, Number(options.minimumLength ?? 0.12));
+  const debugPreClip = options.debugPreClip || null;
+  const debugPostFace = options.debugPostFace || null;
+  const out = [];
+  let removedMinSegment = 0;
+
+  for (const candidate of candidates || []) {
+    const a = candidate?.[0];
+    const b = candidate?.[1];
+    if (!a || !b) {
+      continue;
+    }
+
+    addDebugStroke(debugPreClip, a, b);
+    const clipped = clipSegmentToPolygon(a, b, face.points || []);
+    for (const segment of clipped) {
+      const s0 = segment[0];
+      const s1 = segment[1];
+      if (!s0 || !s1) {
+        continue;
+      }
+      if (distance(s0, s1) < minimumLength) {
+        removedMinSegment += 1;
+        continue;
+      }
+
+      addDebugStroke(debugPostFace, s0, s1);
+      const depthA = depthAtProjectedFace(face, s0);
+      const depthB = depthAtProjectedFace(face, s1);
+      out.push({
+        points: [s0, s1],
+        closed: false,
+        depth: Math.max(depthA, depthB),
+        depthA,
+        depthB,
+        faceIds: [face.id]
+      });
+    }
+  }
+
+  return {
+    strokes: out,
+    removedMinSegment
+  };
+}
+
+function occludeShaderByFrontFaces(strokes, faces, minimumLength = 0.1) {
+  if (!strokes.length || !faces.length) {
+    return {
+      strokes,
+      stats: { removedMinSegment: 0 }
+    };
+  }
+
+  const faceById = new Map(faces.map((face) => [face.id, face]));
+  const boundsById = new Map(faces.map((face) => [face.id, faceBounds2D(face)]));
+  const frontByFaceId = new Map();
+
+  for (const face of faces) {
+    const sourceBounds = boundsById.get(face.id);
+    const front = [];
+    for (const candidate of faces) {
+      if (candidate.id === face.id) {
+        continue;
+      }
+      if ((candidate.drawOrder ?? 0) <= (face.drawOrder ?? 0)) {
+        continue;
+      }
+      const candidateBounds = boundsById.get(candidate.id);
+      if (!boundsOverlap2D(sourceBounds, candidateBounds, 1e-4)) {
+        continue;
+      }
+      front.push(candidate);
+    }
+    frontByFaceId.set(face.id, front);
+  }
+
+  const visible = [];
+  let removedMinSegment = 0;
+  for (const stroke of strokes) {
+    if (!stroke.points || stroke.points.length < 2 || stroke.closed) {
+      visible.push(stroke);
+      continue;
+    }
+
+    const sourceFaceId = stroke.faceIds?.[0];
+    const sourceFace = faceById.get(sourceFaceId);
+    if (!sourceFace) {
+      visible.push(stroke);
+      continue;
+    }
+
+    let segments = [[stroke.points[0], stroke.points[1]]];
+    const occluders = frontByFaceId.get(sourceFaceId) || [];
+
+    for (const occluder of occluders) {
+      if (!segments.length) {
+        break;
+      }
+      const occluderBounds = boundsById.get(occluder.id);
+      const nextSegments = [];
+
+      for (const segment of segments) {
+        const segBounds = segmentBounds2D(segment[0], segment[1]);
+        if (!boundsOverlap2D(segBounds, occluderBounds, 1e-4)) {
+          nextSegments.push(segment);
+          continue;
+        }
+
+        const clipped = subtractSegmentByPolygon(segment[0], segment[1], occluder.points || []);
+        if (!clipped.length) {
+          continue;
+        }
+        nextSegments.push(...clipped);
+      }
+
+      segments = nextSegments;
+    }
+
+    for (const segment of segments) {
+      if (distance(segment[0], segment[1]) < minimumLength) {
+        removedMinSegment += 1;
+        continue;
+      }
+
+      const depthA = depthAtProjectedFace(sourceFace, segment[0]);
+      const depthB = depthAtProjectedFace(sourceFace, segment[1]);
+      visible.push({
+        points: [segment[0], segment[1]],
+        closed: false,
+        depth: Math.max(depthA, depthB),
+        depthA,
+        depthB,
+        faceIds: [sourceFaceId]
+      });
+    }
+  }
+
+  return {
+    strokes: visible,
+    stats: {
+      removedMinSegment
+    }
+  };
+}
+
 function cleanupEdgeStrokes(strokes, depthBuffer, options = {}) {
   const open = [];
   const passthrough = [];
@@ -859,6 +1118,22 @@ function cleanupEdgeStrokes(strokes, depthBuffer, options = {}) {
     Number(options.minSegment || 0.8) * 0.7,
     0.45 * pxToWorld
   );
+  const maxCleanupSegments = Math.max(240, Math.round(options.maxCleanupSegments ?? 1200));
+
+  if (open.length > maxCleanupSegments) {
+    const micro = removeMicroSegments(open, minLength);
+    return {
+      strokes: [...micro.strokes, ...passthrough],
+      debug: {
+        preMerge: [],
+        postMerge: [],
+        endpointClusters: [],
+        segmentsBefore: open.length,
+        segmentsAfter: micro.strokes.length,
+        removedMicroSegments: micro.removed
+      }
+    };
+  }
 
   const preMerge = open.map((stroke) => ({
     points: [
@@ -924,7 +1199,8 @@ function occludeLayer(strokes, depthBuffer, debugSamples = null, options = {}) {
       clusterTolerancePx: options.clusterTolerancePx,
       joinTolerancePx: options.joinTolerancePx,
       trimTolerancePx: options.trimTolerancePx,
-      lineTolerancePx: options.lineTolerancePx
+      lineTolerancePx: options.lineTolerancePx,
+      maxCleanupSegments: options.maxCleanupSegments
     });
   }
 
@@ -995,18 +1271,44 @@ export function buildStrokeScene(faces, controls, options = {}) {
   const budget = {
     used: 0,
     clipped: 0,
-    maxStrokes: fastMode ? Math.min(controls.maxStrokes, 4200) : controls.maxStrokes
+    maxStrokes: fastMode ? Math.min(controls.maxStrokes, 2400) : controls.maxStrokes
   };
-  const showDebug = Boolean(controls.occlusionDebug) && !fastMode;
+  const shaderControls = {
+    ...controls,
+    maxStrokes: Math.min(controls.maxStrokes, fastMode ? 860 : 2200)
+  };
+  const showOcclusionDebug = Boolean(controls.occlusionDebug) && !fastMode;
+  const showShaderIntegrityDebug = Boolean(controls.shaderIntegrityDebug) && !fastMode;
+  const shaderIntegrity = {
+    facesConsidered: 0,
+    facesShaded: 0,
+    marksGeneratedPreClip: 0,
+    marksPostFaceClip: 0,
+    marksPostOcclusion: 0,
+    marksRemovedMinSegment: 0,
+    marksRemovedBudget: 0,
+    retries: 0
+  };
   const shaderDebug = {
     facesShaded: 0,
     cellsTested: 0,
     emittedPreClip: 0,
     emittedPostClip: 0
   };
+  const shaderDebugLayers = showShaderIntegrityDebug
+    ? {
+      shadedFacePolygons: [],
+      preClipCandidates: [],
+      postFaceClip: [],
+      postOcclusion: []
+    }
+    : null;
 
   const edges = collectVisibleEdges(faces);
   for (const edge of edges) {
+    if (budget.used >= budget.maxStrokes) {
+      break;
+    }
     const layer = edge.classification === "internal" ? "internal" : "outline";
     addStroke(layers, layer, [edge.a, edge.b], false, controls, budget, {
       depthA: edge.aDepth,
@@ -1015,37 +1317,144 @@ export function buildStrokeScene(faces, controls, options = {}) {
     });
   }
 
-  for (const face of faces) {
-    if (face.faceType === "top") {
-      continue;
+  const shaderFaces = controls.shaderPreset === "off"
+    ? []
+    : faces.filter((face) => face.faceType !== "top" && polygonArea2(face.points || []) >= 0.5);
+  shaderIntegrity.facesConsidered = shaderFaces.length;
+  const shaderBudgetPool = Math.max(0, budget.maxStrokes - budget.used);
+  const shaderWeights = shaderFaces.map((face) => {
+    const area = polygonArea2(face.points || []);
+    const tone = clamp((Number.isFinite(face.toneIndex) ? face.toneIndex : 2.5) / 5, 0, 1);
+    return Math.max(1, Math.sqrt(Math.max(4, area)) * lerp(0.7, 1.85, tone));
+  });
+  const shaderFloor = shaderFaces.map((face) => {
+    const tone = Number.isFinite(face.toneIndex) ? face.toneIndex : 0;
+    return tone >= 3 ? 4 : tone >= 2 ? 3 : tone >= 1 ? 2 : 1;
+  });
+  const floorTotal = shaderFloor.reduce((sum, value) => sum + value, 0);
+  const floorScale = floorTotal > 0 && floorTotal > shaderBudgetPool
+    ? shaderBudgetPool / floorTotal
+    : 1;
+  const shaderFloorScaled = shaderFloor.map((value) => Math.max(0, Math.floor(value * floorScale)));
+  const floorUsed = shaderFloorScaled.reduce((sum, value) => sum + value, 0);
+  let remainingWeightedPool = Math.max(0, shaderBudgetPool - floorUsed);
+  let remainingWeight = shaderWeights.reduce((sum, weight) => sum + weight, 0);
+  let remainingShaderBudget = shaderBudgetPool;
+
+  for (let index = 0; index < shaderFaces.length; index += 1) {
+    if (budget.used >= budget.maxStrokes) {
+      break;
     }
-    if (controls.shaderPreset === "off") {
-      continue;
+    if (remainingShaderBudget <= 0 || remainingWeight <= 1e-6) {
+      break;
     }
-    const shader = generateFaceShaderStrokes(face, controls);
-    const strokes = shader.strokes || [];
-    if (strokes.length) {
-      shaderDebug.facesShaded += 1;
-    }
+
+    const face = shaderFaces[index];
+    const faceWeight = shaderWeights[index];
+    const baseBudget = Math.min(shaderFloorScaled[index] ?? 0, remainingShaderBudget);
+    const weightedExtra = remainingWeight > 1e-6
+      ? Math.round((remainingWeightedPool * faceWeight) / remainingWeight)
+      : 0;
+    const perFaceBudget = Math.max(1, Math.min(remainingShaderBudget, baseBudget + Math.max(0, weightedExtra)));
+    const toneIndex = Number.isFinite(face.toneIndex) ? face.toneIndex : 0;
+    const minFaceMarks = toneIndex >= 2
+      ? clamp(Math.round(lerp(10, 22, toneIndex / 5)), 10, 24)
+      : 0;
+
+    const shader = generateFaceShaderStrokes(face, {
+      ...shaderControls,
+      faceStrokeBudget: perFaceBudget
+    });
+    shaderIntegrity.marksGeneratedPreClip += shader.stats?.emittedPreClip || 0;
     shaderDebug.cellsTested += shader.stats?.cellsTested || 0;
     shaderDebug.emittedPreClip += shader.stats?.emittedPreClip || 0;
     shaderDebug.emittedPostClip += shader.stats?.emittedPostClip || 0;
-    for (const stroke of strokes) {
-      addStroke(layers, "shader", stroke, false, controls, budget, {
-        depthA: face.depth,
-        depthB: face.depth,
-        faceIds: [face.id]
+
+    const shaderMinSegment = clamp(
+      Math.min(
+        controls.minSegment * 0.34,
+        Math.max(0.03, Number(shader.meta?.spacing || 1.2) * 0.28),
+        Math.max(0.03, Number(shader.meta?.diag || 1) * 0.18)
+      ),
+      0.03,
+      controls.minSegment * 0.5
+    );
+    let faceClip = clipShaderCandidatesToFace(
+      shader.candidates || shader.strokes || [],
+      face,
+      {
+        minimumLength: shaderMinSegment,
+        debugPreClip: shaderDebugLayers?.preClipCandidates || null,
+        debugPostFace: shaderDebugLayers?.postFaceClip || null
+      }
+    );
+    shaderIntegrity.marksRemovedMinSegment += faceClip.removedMinSegment;
+
+    if (!fastMode && minFaceMarks > 0 && faceClip.strokes.length < minFaceMarks) {
+      shaderIntegrity.retries += 1;
+      const retry = generateFaceShaderStrokes(face, {
+        ...shaderControls,
+        faceStrokeBudget: perFaceBudget,
+        shaderSpacingScale: 0.72
       });
+      shaderIntegrity.marksGeneratedPreClip += retry.stats?.emittedPreClip || 0;
+      shaderDebug.cellsTested += retry.stats?.cellsTested || 0;
+      shaderDebug.emittedPreClip += retry.stats?.emittedPreClip || 0;
+      shaderDebug.emittedPostClip += retry.stats?.emittedPostClip || 0;
+      const retryMinSeg = clamp(
+        Math.min(
+          controls.minSegment * 0.34,
+          Math.max(0.03, Number(retry.meta?.spacing || 1.0) * 0.28),
+          Math.max(0.03, Number(retry.meta?.diag || 1) * 0.18)
+        ),
+        0.03,
+        controls.minSegment * 0.5
+      );
+      const retryFaceClip = clipShaderCandidatesToFace(
+        retry.candidates || retry.strokes || [],
+        face,
+        {
+          minimumLength: retryMinSeg,
+          debugPreClip: shaderDebugLayers?.preClipCandidates || null,
+          debugPostFace: shaderDebugLayers?.postFaceClip || null
+        }
+      );
+      shaderIntegrity.marksRemovedMinSegment += retryFaceClip.removedMinSegment;
+      if (retryFaceClip.strokes.length > faceClip.strokes.length) {
+        faceClip = retryFaceClip;
+      }
     }
+
+    shaderIntegrity.marksPostFaceClip += faceClip.strokes.length;
+    if (faceClip.strokes.length) {
+      shaderIntegrity.facesShaded += 1;
+      shaderDebug.facesShaded += 1;
+      if (shaderDebugLayers && shaderDebugLayers.shadedFacePolygons.length < 600) {
+        shaderDebugLayers.shadedFacePolygons.push((face.points || []).map((point) => ({ x: point.x, y: point.y })));
+      }
+    }
+
+    const allowed = Math.max(0, budget.maxStrokes - budget.used);
+    const kept = faceClip.strokes.slice(0, allowed);
+    shaderIntegrity.marksRemovedBudget += Math.max(0, faceClip.strokes.length - kept.length);
+    layers.shader.push(...kept);
+    budget.used += kept.length;
+    if (kept.length < faceClip.strokes.length) {
+      budget.clipped += faceClip.strokes.length - kept.length;
+    }
+    const usedDelta = kept.length;
+    remainingShaderBudget = Math.max(0, remainingShaderBudget - usedDelta);
+    remainingWeightedPool = Math.max(0, remainingWeightedPool - Math.max(0, kept.length - baseBudget));
+    remainingWeight = Math.max(0, remainingWeight - faceWeight);
   }
 
   const depthBuffer = buildOcclusionBuffer(faces, {
-    includeDepthPreview: showDebug,
-    maxDim: fastMode ? 1200 : 2400,
-    maxScale: fastMode ? 2 : 4,
-    minScale: fastMode ? 0.35 : 0.5
+    includeDepthPreview: showOcclusionDebug,
+    maxDim: fastMode ? 900 : 1600,
+    maxScale: fastMode ? 1.6 : 3,
+    minScale: fastMode ? 0.3 : 0.45
   });
-  const sampleDebug = showDebug ? [] : null;
+  const sampleDebug = showOcclusionDebug ? [] : null;
   const outlineOcclusion = occludeLayer(layers.outline, depthBuffer, sampleDebug, {
     cleanup: !fastMode,
     minSegment: controls.minSegment,
@@ -1060,6 +1469,8 @@ export function buildStrokeScene(faces, controls, options = {}) {
         minPixelLength: 0.85
       }
       : {
+        minSamples: 8,
+        sampleSpacingPx: 1.8,
         minVisibleRun: 1,
         maxHiddenGap: 3,
         trimRatio: 0.025,
@@ -1081,6 +1492,8 @@ export function buildStrokeScene(faces, controls, options = {}) {
         minPixelLength: 0.9
       }
       : {
+        minSamples: 8,
+        sampleSpacingPx: 1.9,
         minVisibleRun: 1,
         maxHiddenGap: 3,
         trimRatio: 0.02,
@@ -1088,38 +1501,50 @@ export function buildStrokeScene(faces, controls, options = {}) {
         minPixelLength: 0.5
       }
   });
-  const shaderOcclusion = occludeLayer(layers.shader, depthBuffer, sampleDebug, {
-    cleanup: true,
-    minSegment: controls.minSegment * 1.2,
-    clusterTolerancePx: 0.95,
-    joinTolerancePx: 1.1,
-    trimTolerancePx: 0.9,
-    lineTolerancePx: 0.72,
-    clip: fastMode
-      ? {
-        minSamples: 5,
-        sampleSpacingPx: 2.8,
+  const shaderOcclusion = fastMode
+    ? occludeLayer(layers.shader, depthBuffer, sampleDebug, {
+      cleanup: false,
+      minSegment: controls.minSegment * 1.2,
+      clip: {
+        minSamples: 7,
+        sampleSpacingPx: 2.2,
         minVisibleRun: 1,
-        maxHiddenGap: 2,
-        trimRatio: 0.012,
-        trimPixelCap: 0.03,
-        minPixelLength: 0.72
+        maxHiddenGap: 1,
+        trimRatio: 0.006,
+        trimPixelCap: 0.014,
+        minPixelLength: 0.42
       }
-      : {
-        minVisibleRun: 1,
-        maxHiddenGap: 3,
-        trimRatio: 0.02,
-        trimPixelCap: 0.035,
-        minPixelLength: 0.48
-      }
-  });
+    })
+    : (() => {
+      const result = occludeShaderByFrontFaces(layers.shader, faces, controls.minSegment * 0.4);
+      return {
+        strokes: result.strokes,
+        debug: null,
+        stats: result.stats
+      };
+    })();
+  if (shaderOcclusion.stats?.removedMinSegment) {
+    shaderIntegrity.marksRemovedMinSegment += shaderOcclusion.stats.removedMinSegment;
+  }
   const occluded = {
     outline: outlineOcclusion.strokes,
     internal: internalOcclusion.strokes,
     shader: shaderOcclusion.strokes
   };
+  shaderIntegrity.marksPostOcclusion = occluded.shader.length;
+  if (shaderDebugLayers) {
+    shaderDebugLayers.postOcclusion = occluded.shader
+      .slice(0, 2600)
+      .map((stroke) => ({
+        points: [
+          { x: stroke.points[0].x, y: stroke.points[0].y },
+          { x: stroke.points[1].x, y: stroke.points[1].y }
+        ],
+        closed: false
+      }));
+  }
 
-  if (showDebug && controls.shaderPreset !== "off") {
+  if (showOcclusionDebug && controls.shaderPreset !== "off") {
     // eslint-disable-next-line no-console
     console.debug("shader", {
       preset: controls.shaderPreset,
@@ -1132,19 +1557,19 @@ export function buildStrokeScene(faces, controls, options = {}) {
   const segmentsBeforeMerge = (outlineOcclusion.debug?.segmentsBefore || 0) + (internalOcclusion.debug?.segmentsBefore || 0);
   const segmentsAfterMerge = (outlineOcclusion.debug?.segmentsAfter || 0) + (internalOcclusion.debug?.segmentsAfter || 0);
   const removedMicroSegments = (outlineOcclusion.debug?.removedMicroSegments || 0) + (internalOcclusion.debug?.removedMicroSegments || 0);
-  const preMergeEdges = showDebug
+  const preMergeEdges = showOcclusionDebug
     ? [
       ...(outlineOcclusion.debug?.preMerge || []),
       ...(internalOcclusion.debug?.preMerge || [])
     ]
     : [];
-  const postMergeEdges = showDebug
+  const postMergeEdges = showOcclusionDebug
     ? [
       ...(outlineOcclusion.debug?.postMerge || []),
       ...(internalOcclusion.debug?.postMerge || [])
     ]
     : [];
-  const endpointClusterMarkers = showDebug
+  const endpointClusterMarkers = showOcclusionDebug
     ? [
       ...(outlineOcclusion.debug?.endpointClusters || []),
       ...(internalOcclusion.debug?.endpointClusters || [])
@@ -1153,45 +1578,52 @@ export function buildStrokeScene(faces, controls, options = {}) {
       .map((cluster) => sampleMarker(cluster, 0.12))
     : [];
 
-  const passSamples = showDebug && sampleDebug
+  const passSamples = showOcclusionDebug && sampleDebug
     ? sampleDebug.filter((item) => item.visible).slice(0, 900).map((item) => sampleMarker(item.point))
     : [];
-  const failSamples = showDebug && sampleDebug
+  const failSamples = showOcclusionDebug && sampleDebug
     ? sampleDebug.filter((item) => !item.visible).slice(0, 900).map((item) => sampleMarker(item.point))
     : [];
-
-  const debug = showDebug
-    ? {
-      occlusion: {
-        faceOrder: faces.map((face) => ({
-          id: face.id,
-          drawOrder: face.drawOrder,
-          minDepth: face.minDepth,
-          avgDepth: face.depth,
-          maxDepth: face.maxDepth
-        })),
-        edgeSilhouette: edges
-          .filter((edge) => edge.classification === "silhouette")
-          .map((edge) => ({ points: [edge.a, edge.b], closed: false })),
-        edgeInternal: edges
-          .filter((edge) => edge.classification === "internal")
-          .map((edge) => ({ points: [edge.a, edge.b], closed: false })),
-        faceBoxes: faces.map(faceBoundsStroke),
-        faceLabels: faces.map(faceLabel),
-        edgePreMerge: preMergeEdges,
-        edgePostMerge: postMergeEdges,
-        endpointClusters: endpointClusterMarkers,
-        segmentStats: {
-          before: segmentsBeforeMerge,
-          after: segmentsAfterMerge,
-          removedMicro: removedMicroSegments
-        },
-        samplePass: passSamples,
-        sampleFail: failSamples,
-        depthPreview: depthBuffer?.depthPreview || []
-      }
-    }
-    : null;
+  const debugPayload = {};
+  if (showOcclusionDebug) {
+    debugPayload.occlusion = {
+      faceOrder: faces.map((face) => ({
+        id: face.id,
+        drawOrder: face.drawOrder,
+        minDepth: face.minDepth,
+        avgDepth: face.depth,
+        maxDepth: face.maxDepth
+      })),
+      edgeSilhouette: edges
+        .filter((edge) => edge.classification === "silhouette")
+        .map((edge) => ({ points: [edge.a, edge.b], closed: false })),
+      edgeInternal: edges
+        .filter((edge) => edge.classification === "internal")
+        .map((edge) => ({ points: [edge.a, edge.b], closed: false })),
+      faceBoxes: faces.map(faceBoundsStroke),
+      faceLabels: faces.map(faceLabel),
+      edgePreMerge: preMergeEdges,
+      edgePostMerge: postMergeEdges,
+      endpointClusters: endpointClusterMarkers,
+      segmentStats: {
+        before: segmentsBeforeMerge,
+        after: segmentsAfterMerge,
+        removedMicro: removedMicroSegments
+      },
+      samplePass: passSamples,
+      sampleFail: failSamples,
+      depthPreview: depthBuffer?.depthPreview || []
+    };
+  }
+  if (showShaderIntegrityDebug && shaderDebugLayers) {
+    debugPayload.shaderIntegrity = {
+      shadedFacePolygons: shaderDebugLayers.shadedFacePolygons,
+      preClipCandidates: shaderDebugLayers.preClipCandidates,
+      postFaceClip: shaderDebugLayers.postFaceClip,
+      postOcclusion: shaderDebugLayers.postOcclusion
+    };
+  }
+  const debug = Object.keys(debugPayload).length ? debugPayload : null;
 
   return {
     faces,
@@ -1206,7 +1638,8 @@ export function buildStrokeScene(faces, controls, options = {}) {
       clippedStrokes: budget.clipped,
       outlineStrokes: occluded.outline.length,
       internalStrokes: occluded.internal.length,
-      shaderStrokes: occluded.shader.length
+      shaderStrokes: occluded.shader.length,
+      shaderIntegrity
     },
     debug
   };

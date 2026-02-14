@@ -27,12 +27,11 @@
               <option value="off" selected>Off</option>
               <option value="lines">Lines</option>
               <option value="crosshatch">Crosshatch</option>
+              <option value="contour-bands">Contour Bands</option>
               <option value="ascii">ASCII</option>
               <option value="ordered-dither">Ordered Dither</option>
               <option value="error-diffusion">Error Diffusion</option>
               <option value="stipple">Stipple</option>
-              <option value="crt-scanline">CRT Scanlines</option>
-              <option value="crt-mask">CRT Mask</option>
             </select>
             <span class="value"></span>
           </div>
@@ -78,6 +77,27 @@
               <div class="row check-row">
                 <label for="show-endpoint-clusters">Show Endpoint Clusters</label>
                 <input id="show-endpoint-clusters" type="checkbox" />
+              </div>
+              <h3>Shader Integrity</h3>
+              <div class="row check-row">
+                <label for="show-shader-integrity-debug">Show Shader Integrity Counters</label>
+                <input id="show-shader-integrity-debug" type="checkbox" />
+              </div>
+              <div class="row check-row">
+                <label for="show-shader-face-polygons">Show Shaded Face Polygons</label>
+                <input id="show-shader-face-polygons" type="checkbox" />
+              </div>
+              <div class="row check-row">
+                <label for="show-shader-preclip">Show Shader Candidates (Pre-Clip)</label>
+                <input id="show-shader-preclip" type="checkbox" />
+              </div>
+              <div class="row check-row">
+                <label for="show-shader-postface">Show Shader Marks (Post Face-Clip)</label>
+                <input id="show-shader-postface" type="checkbox" />
+              </div>
+              <div class="row check-row">
+                <label for="show-shader-final">Show Shader Marks (Post Occlusion)</label>
+                <input id="show-shader-final" type="checkbox" />
               </div>
             </div>
           </details>

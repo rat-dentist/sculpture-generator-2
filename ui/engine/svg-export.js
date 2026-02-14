@@ -109,6 +109,13 @@ export function buildPreviewSvg(scene, toggles, viewport = {}) {
   const debugClustersPath = pathFromStrokes(scene.debug?.occlusion?.endpointClusters || [], dx, dy);
   const debugPassPath = pathFromStrokes(scene.debug?.occlusion?.samplePass || [], dx, dy);
   const debugFailPath = pathFromStrokes(scene.debug?.occlusion?.sampleFail || [], dx, dy);
+  const shaderIntegrity = scene.debug?.shaderIntegrity || null;
+  const shaderPreClipPath = pathFromStrokes(shaderIntegrity?.preClipCandidates || [], dx, dy);
+  const shaderPostFacePath = pathFromStrokes(shaderIntegrity?.postFaceClip || [], dx, dy);
+  const shaderPostOcclusionPath = pathFromStrokes(shaderIntegrity?.postOcclusion || [], dx, dy);
+  const shaderFacePolygons = (shaderIntegrity?.shadedFacePolygons || [])
+    .map((points) => `<polygon points="${polygonMarkup(points, dx, dy)}" fill="#f59e0b" fill-opacity="0.14" stroke="#f59e0b" stroke-width="0.2" />`)
+    .join("");
   const debugLabels = (scene.debug?.occlusion?.faceLabels || [])
     .map((label) => `<text x="${format(label.x + dx)}" y="${format(label.y + dy)}" fill="#1f2937" font-size="8" font-family="monospace">${label.text}</text>`)
     .join("");
@@ -137,6 +144,10 @@ export function buildPreviewSvg(scene, toggles, viewport = {}) {
   ${toggles.showOutline ? `<path d="${outlinePath}" fill="none" stroke="#121212" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" />` : ""}
   ${toggles.showInternal ? `<path d="${internalPath}" fill="none" stroke="#707070" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round" />` : ""}
   ${toggles.shaderEnabled ? `<path d="${shaderPath}" fill="none" stroke="#222222" stroke-width="0.56" stroke-linecap="butt" stroke-linejoin="round" />` : ""}
+  ${toggles.showShaderFacePolygons ? `<g id="shader_debug_faces">${shaderFacePolygons}</g>` : ""}
+  ${toggles.showShaderPreClip ? `<path d="${shaderPreClipPath}" fill="none" stroke="#93a6bd" stroke-width="0.4" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.85" />` : ""}
+  ${toggles.showShaderPostFaceClip ? `<path d="${shaderPostFacePath}" fill="none" stroke="#475569" stroke-width="0.58" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.9" />` : ""}
+  ${toggles.showShaderFinalClip ? `<path d="${shaderPostOcclusionPath}" fill="none" stroke="#0f172a" stroke-width="0.66" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.95" />` : ""}
   ${toggles.showOcclusionDebug && debugBoxesPath ? `<path d="${debugBoxesPath}" fill="none" stroke="#2563eb" stroke-width="0.45" stroke-dasharray="2 2" />` : ""}
   ${toggles.showOcclusionDebug && debugSilhouettePath ? `<path d="${debugSilhouettePath}" fill="none" stroke="#15803d" stroke-width="0.9" />` : ""}
   ${toggles.showOcclusionDebug && debugInternalPath ? `<path d="${debugInternalPath}" fill="none" stroke="#dc2626" stroke-width="0.9" />` : ""}
