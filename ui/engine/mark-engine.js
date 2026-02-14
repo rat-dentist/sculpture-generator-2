@@ -920,7 +920,11 @@ function occludeLayer(strokes, depthBuffer, debugSamples = null, options = {}) {
 
   if (options.cleanup) {
     return cleanupEdgeStrokes(clipped, depthBuffer, {
-      minSegment: options.minSegment
+      minSegment: options.minSegment,
+      clusterTolerancePx: options.clusterTolerancePx,
+      joinTolerancePx: options.joinTolerancePx,
+      trimTolerancePx: options.trimTolerancePx,
+      lineTolerancePx: options.lineTolerancePx
     });
   }
 
@@ -1011,29 +1015,27 @@ export function buildStrokeScene(faces, controls, options = {}) {
     });
   }
 
-  if (!fastMode) {
-    for (const face of faces) {
-      if (face.faceType === "top") {
-        continue;
-      }
-      if (controls.shaderPreset === "off") {
-        continue;
-      }
-      const shader = generateFaceShaderStrokes(face, controls);
-      const strokes = shader.strokes || [];
-      if (strokes.length) {
-        shaderDebug.facesShaded += 1;
-      }
-      shaderDebug.cellsTested += shader.stats?.cellsTested || 0;
-      shaderDebug.emittedPreClip += shader.stats?.emittedPreClip || 0;
-      shaderDebug.emittedPostClip += shader.stats?.emittedPostClip || 0;
-      for (const stroke of strokes) {
-        addStroke(layers, "shader", stroke, false, controls, budget, {
-          depthA: face.depth,
-          depthB: face.depth,
-          faceIds: [face.id]
-        });
-      }
+  for (const face of faces) {
+    if (face.faceType === "top") {
+      continue;
+    }
+    if (controls.shaderPreset === "off") {
+      continue;
+    }
+    const shader = generateFaceShaderStrokes(face, controls);
+    const strokes = shader.strokes || [];
+    if (strokes.length) {
+      shaderDebug.facesShaded += 1;
+    }
+    shaderDebug.cellsTested += shader.stats?.cellsTested || 0;
+    shaderDebug.emittedPreClip += shader.stats?.emittedPreClip || 0;
+    shaderDebug.emittedPostClip += shader.stats?.emittedPostClip || 0;
+    for (const stroke of strokes) {
+      addStroke(layers, "shader", stroke, false, controls, budget, {
+        depthA: face.depth,
+        depthB: face.depth,
+        faceIds: [face.id]
+      });
     }
   }
 
@@ -1087,12 +1089,29 @@ export function buildStrokeScene(faces, controls, options = {}) {
       }
   });
   const shaderOcclusion = occludeLayer(layers.shader, depthBuffer, sampleDebug, {
+    cleanup: true,
+    minSegment: controls.minSegment * 1.2,
+    clusterTolerancePx: 0.95,
+    joinTolerancePx: 1.1,
+    trimTolerancePx: 0.9,
+    lineTolerancePx: 0.72,
     clip: fastMode
       ? {
         minSamples: 5,
-        sampleSpacingPx: 2.8
+        sampleSpacingPx: 2.8,
+        minVisibleRun: 1,
+        maxHiddenGap: 2,
+        trimRatio: 0.012,
+        trimPixelCap: 0.03,
+        minPixelLength: 0.72
       }
-      : {}
+      : {
+        minVisibleRun: 1,
+        maxHiddenGap: 3,
+        trimRatio: 0.02,
+        trimPixelCap: 0.035,
+        minPixelLength: 0.48
+      }
   });
   const occluded = {
     outline: outlineOcclusion.strokes,
