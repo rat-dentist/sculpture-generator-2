@@ -435,7 +435,10 @@ function buildScene(settings, forceFormRebuild = false, interactive = false) {
   const projectedFaces = projectFaces(cache.rawFaces, view, {
     fastOrder: false
   });
-  cache.scene = buildStrokeScene(projectedFaces, settings.mark, {
+  cache.scene = buildStrokeScene(projectedFaces, {
+    ...settings.mark,
+    shaderCoarse: interactive
+  }, {
     fastMode: interactive
   });
   cache.lastSettings = { ...settings, view };
@@ -539,6 +542,7 @@ function render(forceFormRebuild = false, interactive = viewState.dragging) {
 
 let pendingForce = false;
 let queued = false;
+let lastInteractiveRenderMs = 0;
 
 function scheduleRender(forceFormRebuild = false) {
   pendingForce = pendingForce || forceFormRebuild;
@@ -620,7 +624,11 @@ function bindRotationControls() {
       const next = multiplyMat3(pitchRotation, multiplyMat3(yawRotation, base));
       viewState.orientation = orthonormalizeMat3(next);
     }
-    scheduleRender(false);
+    const now = performance.now();
+    if (now - lastInteractiveRenderMs >= 40) {
+      lastInteractiveRenderMs = now;
+      scheduleRender(false);
+    }
   };
 
   const onPointerUp = (event) => {
@@ -637,6 +645,7 @@ function bindRotationControls() {
     viewState.pointerButton = 0;
     host.releasePointerCapture(event.pointerId);
     host.style.cursor = "grab";
+    lastInteractiveRenderMs = 0;
     scheduleRender(false);
   };
 
@@ -648,6 +657,7 @@ function bindRotationControls() {
     viewState.pointerId = null;
     viewState.pointerButton = 0;
     host.style.cursor = "grab";
+    lastInteractiveRenderMs = 0;
     scheduleRender(false);
   };
 
@@ -670,7 +680,11 @@ function bindRotationControls() {
     viewState.zoom = newZoom;
     viewState.panX = mouseX - halfWidth - worldX * newZoom;
     viewState.panY = mouseY - halfHeight - worldY * newZoom;
-    scheduleRender(false);
+    const now = performance.now();
+    if (now - lastInteractiveRenderMs >= 40) {
+      lastInteractiveRenderMs = now;
+      scheduleRender(false);
+    }
   };
 
   host.addEventListener("pointerdown", onPointerDown);
@@ -687,6 +701,7 @@ function bindRotationControls() {
     viewState.pointerId = null;
     viewState.pointerButton = 0;
     host.style.cursor = "grab";
+    lastInteractiveRenderMs = 0;
     scheduleRender(false);
   });
 
@@ -697,6 +712,7 @@ function bindRotationControls() {
     viewState.zoom = 1;
     viewState.panX = 0;
     viewState.panY = 0;
+    lastInteractiveRenderMs = 0;
     scheduleRender(false);
   });
 }
@@ -787,11 +803,19 @@ function wireEvents() {
   for (const control of liveControls) {
     control.addEventListener("input", () => {
       updateValueBadges();
+      const now = performance.now();
+    if (now - lastInteractiveRenderMs >= 40) {
+      lastInteractiveRenderMs = now;
       scheduleRender(false);
+    }
     });
     control.addEventListener("change", () => {
       updateValueBadges();
+      const now = performance.now();
+    if (now - lastInteractiveRenderMs >= 40) {
+      lastInteractiveRenderMs = now;
       scheduleRender(false);
+    }
     });
   }
 

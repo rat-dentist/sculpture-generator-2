@@ -25,12 +25,14 @@
             <label for="shader-style">Shader Style</label>
             <select id="shader-style">
               <option value="off" selected>Off</option>
-              <option value="line-light">Line Hatch - Light</option>
-              <option value="line-medium">Line Hatch - Medium</option>
-              <option value="line-heavy">Line Hatch - Heavy</option>
-              <option value="ascii-light">ASCII - Light</option>
-              <option value="ascii-medium">ASCII - Medium</option>
-              <option value="ascii-heavy">ASCII - Heavy</option>
+              <option value="lines">Lines</option>
+              <option value="crosshatch">Crosshatch</option>
+              <option value="ascii">ASCII</option>
+              <option value="ordered-dither">Ordered Dither</option>
+              <option value="error-diffusion">Error Diffusion</option>
+              <option value="stipple">Stipple</option>
+              <option value="crt-scanline">CRT Scanlines</option>
+              <option value="crt-mask">CRT Mask</option>
             </select>
             <span class="value"></span>
           </div>
@@ -53,26 +55,32 @@
             <label for="show-internal">Internal Edges</label>
             <input id="show-internal" type="checkbox" checked />
           </div>
-          <div class="row check-row">
-            <label for="show-occlusion-debug">Show Occlusion Debug</label>
-            <input id="show-occlusion-debug" type="checkbox" />
-          </div>
-          <div class="row check-row">
-            <label for="show-occlusion-text">Show Occlusion Text</label>
-            <input id="show-occlusion-text" type="checkbox" />
-          </div>
-          <div class="row check-row">
-            <label for="show-edge-premerge">Show Edge Segments (Pre-Merge)</label>
-            <input id="show-edge-premerge" type="checkbox" />
-          </div>
-          <div class="row check-row">
-            <label for="show-edge-postmerge">Show Edge Segments (Post-Merge)</label>
-            <input id="show-edge-postmerge" type="checkbox" />
-          </div>
-          <div class="row check-row">
-            <label for="show-endpoint-clusters">Show Endpoint Clusters</label>
-            <input id="show-endpoint-clusters" type="checkbox" />
-          </div>
+          <details class="advanced-panel">
+            <summary>Advanced</summary>
+            <div class="advanced-group">
+              <h3>Debug Tools</h3>
+              <div class="row check-row">
+                <label for="show-occlusion-debug">Show Occlusion Debug</label>
+                <input id="show-occlusion-debug" type="checkbox" />
+              </div>
+              <div class="row check-row">
+                <label for="show-occlusion-text">Show Occlusion Text</label>
+                <input id="show-occlusion-text" type="checkbox" />
+              </div>
+              <div class="row check-row">
+                <label for="show-edge-premerge">Show Edge Segments (Pre-Merge)</label>
+                <input id="show-edge-premerge" type="checkbox" />
+              </div>
+              <div class="row check-row">
+                <label for="show-edge-postmerge">Show Edge Segments (Post-Merge)</label>
+                <input id="show-edge-postmerge" type="checkbox" />
+              </div>
+              <div class="row check-row">
+                <label for="show-endpoint-clusters">Show Endpoint Clusters</label>
+                <input id="show-endpoint-clusters" type="checkbox" />
+              </div>
+            </div>
+          </details>
         </section>
 
         <section>

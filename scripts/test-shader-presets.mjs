@@ -1,8 +1,6 @@
-import { generateForm } from "../ui/engine/form-engine.js";
-import { extractMergedFaces } from "../ui/engine/mesher.js";
-import { projectFaces } from "../ui/engine/projection.js";
-import { buildStrokeScene } from "../ui/engine/mark-engine.js";
 import { buildPreviewSvg } from "../ui/engine/svg-export.js";
+import { toneIndexForFace } from "../ui/engine/projection.js";
+import { generateFaceShaderStrokes } from "../ui/engine/shader-styles.js";
 
 function testSixTonePalette() {
   const faces = [];
@@ -52,51 +50,55 @@ function testSixTonePalette() {
     }
   );
 
-  const fills = [...svg.matchAll(/fill=\"(#[0-9a-fA-F]{6})\"/g)].map((match) => match[1].toLowerCase());
+  const fills = [...svg.matchAll(/fill="(#[0-9a-fA-F]{6})"/g)].map((match) => match[1].toLowerCase());
   const unique = new Set(fills.filter((value) => value !== "#f8f5ee"));
   if (unique.size < 6) {
     throw new Error(`Expected 6 face greys, got ${unique.size}`);
   }
 }
 
-function testAsciiPresetOutput() {
-  const grid = generateForm({
-    seed: 1042,
-    width: 10,
-    depth: 10,
-    height: 12,
-    massCount: 4,
-    carveCount: 5,
-    bridgeCount: 3,
-    towerCount: 3,
-    terraceRate: 0.35,
-    cantileverRate: 0.3,
-    notchCount: 6,
-    spliceCount: 4,
-    verticalBias: 0.62,
-    supportRatio: 0.2
-  });
-  const faces = projectFaces(extractMergedFaces(grid), {
-    yawDeg: 45,
-    pitchDeg: 0,
-    orientation: null,
-    scale: 30,
-    pivot: { x: 0, y: 0, z: 0 }
-  });
+function testToneIndexMapping() {
+  const shadeKeys = ["z_pos", "x_pos", "y_pos", "x_neg", "y_neg", "z_neg"];
+  const toneSet = new Set(shadeKeys.map((shadeKey) => toneIndexForFace({ shadeKey })));
+  if (toneSet.size !== 6) {
+    throw new Error(`Expected 6 unique tone indices, got ${toneSet.size}`);
+  }
+}
 
-  const scene = buildStrokeScene(faces, {
+function testShaderStylesEmit() {
+  const face = {
+    id: 12,
+    faceType: "left",
+    shadeKey: "z_neg",
+    toneIndex: 4,
+    points: [
+      { x: 0, y: 0 },
+      { x: 24, y: 0 },
+      { x: 24, y: 24 },
+      { x: 0, y: 24 }
+    ]
+  };
+
+  const controlsBase = {
     seed: 1042,
     occlusionDebug: false,
-    shaderPreset: "ascii-medium",
     maxStrokes: 7000,
-    minSegment: 0.8
-  });
+    minSegment: 0.8,
+    shaderCoarse: false
+  };
 
-  if ((scene.stats.shaderStrokes || 0) <= 0) {
-    throw new Error("ASCII medium preset emitted no shader strokes.");
+  for (const shaderPreset of ["lines", "crosshatch", "ascii", "ordered-dither", "crt-scanline", "crt-mask"]) {
+    const shader = generateFaceShaderStrokes(face, {
+      ...controlsBase,
+      shaderPreset
+    });
+    if ((shader.strokes || []).length <= 0) {
+      throw new Error(`${shaderPreset} emitted no shader strokes.`);
+    }
   }
 }
 
 testSixTonePalette();
-testAsciiPresetOutput();
+testToneIndexMapping();
+testShaderStylesEmit();
 console.log("shader regression ok");

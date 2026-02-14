@@ -115,6 +115,17 @@ function toneIndexFromShadeKey(shadeKey) {
   return 5;
 }
 
+export function toneIndexForFace(face) {
+  if (Number.isFinite(face?.toneIndex)) {
+    return Math.max(0, Math.min(5, Math.round(face.toneIndex)));
+  }
+  return toneIndexFromShadeKey(face?.shadeKey);
+}
+
+export function tone01ForFace(face) {
+  return toneIndexForFace(face) / 5;
+}
+
 function faceBounds(face) {
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
@@ -425,7 +436,7 @@ export function projectFaces(faces, view, options = {}) {
       id: face.id,
       faceType: classification.faceType,
       shadeKey: classification.shadeKey,
-      toneIndex: classification.toneIndex,
+    toneIndex: classification.toneIndex,
       area: face.area,
       normal: { ...face.normal },
       worldCorners,
