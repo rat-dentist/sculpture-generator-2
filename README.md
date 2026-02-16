@@ -13,12 +13,14 @@ Desktop app for generating voxel-based isometric forms and plotter-friendly pen 
 - Mark engine:
   - lines
   - crosshatch
-  - concentric rings
   - ASCII glyph shading
   - ordered dither
   - error diffusion
   - stipple
-  - brick/weave
+  - per-face shader pipeline:
+    - visible faces are tone-quantized into 6 bins (`0` darkest, `5` lightest)
+    - patterns are generated deterministically per face and clipped to face polygons
+    - default pattern placement is screen-aligned for stable orbit behavior
   - silhouette/internal edge hierarchy
 - Export:
   - SVG grouped by pen layer:

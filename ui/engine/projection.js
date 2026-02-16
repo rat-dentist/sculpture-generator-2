@@ -126,22 +126,23 @@ function fixedShadeKey(normal) {
 }
 
 function toneIndexFromShadeKey(shadeKey) {
-  if (shadeKey === "z_pos") {
+  // 0 = darkest, 5 = lightest
+  if (shadeKey === "z_neg") {
     return 0;
   }
-  if (shadeKey === "x_pos") {
+  if (shadeKey === "y_neg") {
     return 1;
   }
-  if (shadeKey === "y_pos") {
+  if (shadeKey === "x_neg") {
     return 2;
   }
-  if (shadeKey === "x_neg") {
+  if (shadeKey === "y_pos") {
     return 3;
   }
-  if (shadeKey === "y_neg") {
+  if (shadeKey === "x_pos") {
     return 4;
   }
-  return 5;
+  return 5; // z_pos (top) tends lightest
 }
 
 const LIGHTS = [
@@ -152,7 +153,7 @@ const LIGHTS = [
 
 function toneIndexFromLighting(normal, shadeKey) {
   const orientationTone = toneIndexFromShadeKey(shadeKey);
-  return orientationTone;
+  return clamp(orientationTone, 0, 5);
 }
 
 export function toneIndexForFace(face) {

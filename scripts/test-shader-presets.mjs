@@ -87,7 +87,7 @@ function testShaderStylesEmit() {
     shaderCoarse: false
   };
 
-  for (const shaderPreset of ["lines", "crosshatch", "concentric", "stipple", "ordered-dither", "error-diffusion", "ascii", "brick-weave", "contour-bands", "ascii-legacy", "ascii-solid"]) {
+  for (const shaderPreset of ["lines", "crosshatch", "stipple", "ordered-dither", "error-diffusion", "ascii", "ascii-legacy", "ascii-solid"]) {
     const shader = generateFaceShaderStrokes(face, {
       ...controlsBase,
       shaderPreset
@@ -134,9 +134,6 @@ function testCubeProjectionAndShaderCoverage() {
 
   let shaded = 0;
   for (const face of projection.faces || []) {
-    if (face.faceType === "top") {
-      continue;
-    }
     const shader = generateFaceShaderStrokes(face, {
       seed: 1337,
       shaderPreset: "lines",
@@ -150,8 +147,8 @@ function testCubeProjectionAndShaderCoverage() {
     }
   }
 
-  if (shaded < 2) {
-    throw new Error(`Expected at least 2 shaded side faces on cube, got ${shaded}`);
+  if (shaded < 3) {
+    throw new Error(`Expected at least 3 shaded visible cube faces, got ${shaded}`);
   }
 }
 

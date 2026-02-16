@@ -107,35 +107,46 @@ function faceMetrics(face) {
   };
 }
 
-function faceFrame(face) {
+function faceFrame(face, controls = {}) {
   const points = face.points || [];
-  const origin = points[0] ? { x: points[0].x, y: points[0].y } : { x: 0, y: 0 };
-  const p1 = points[1] || points[0] || { x: 1, y: 0 };
-  const plast = points[points.length - 1] || points[0] || { x: 0, y: 1 };
+  const bounds = boundsFromPolygons([points]);
+  const alignToFace = Boolean(controls.shaderAlignToFace);
+  let origin = points[0] ? { x: points[0].x, y: points[0].y } : { x: 0, y: 0 };
+  let uX = 1;
+  let uY = 0;
+  let vX = 0;
+  let vY = 1;
+  let uLen2D = 1;
+  let vLen2D = 1;
 
-  let uX = p1.x - origin.x;
-  let uY = p1.y - origin.y;
-  let vX = plast.x - origin.x;
-  let vY = plast.y - origin.y;
+  if (alignToFace) {
+    const p1 = points[1] || points[0] || { x: 1, y: 0 };
+    const plast = points[points.length - 1] || points[0] || { x: 0, y: 1 };
 
-  if (face.visibleMask) {
-    uX = face.visibleMask.uX;
-    uY = face.visibleMask.uY;
-    vX = face.visibleMask.vX;
-    vY = face.visibleMask.vY;
-  }
+    uX = p1.x - origin.x;
+    uY = p1.y - origin.y;
+    vX = plast.x - origin.x;
+    vY = plast.y - origin.y;
 
-  let uLen2D = Math.hypot(uX, uY);
-  let vLen2D = Math.hypot(vX, vY);
+    if (face.visibleMask) {
+      uX = face.visibleMask.uX;
+      uY = face.visibleMask.uY;
+      vX = face.visibleMask.vX;
+      vY = face.visibleMask.vY;
+    }
 
-  if (uLen2D < 1e-6 || vLen2D < 1e-6) {
-    const bounds = boundsFromPolygons([points]);
-    uX = Math.max(1, bounds.width);
-    uY = 0;
-    vX = 0;
-    vY = Math.max(1, bounds.height);
     uLen2D = Math.hypot(uX, uY);
     vLen2D = Math.hypot(vX, vY);
+  }
+
+  if (!alignToFace || uLen2D < 1e-6 || vLen2D < 1e-6) {
+    origin = { x: bounds.minX, y: bounds.minY };
+    uX = Math.max(1e-5, bounds.width);
+    uY = 0;
+    vX = 0;
+    vY = Math.max(1e-5, bounds.height);
+    uLen2D = Math.max(1e-5, Math.abs(uX));
+    vLen2D = Math.max(1e-5, Math.abs(vY));
   }
 
   const worldCorners = face.worldCorners || [];
@@ -196,6 +207,34 @@ function makeSegment(a, b) {
   return [{ x: a.x, y: a.y }, { x: b.x, y: b.y }];
 }
 
+function densityControl(controls) {
+  return clamp(Number(controls.shaderDensity ?? 1), 0.02, 6);
+}
+
+function hash2(row, col, seed = 0) {
+  const x = (row | 0) * 73856093;
+  const y = (col | 0) * 19349663;
+  const z = (seed | 0) * 83492791;
+  const value = (x ^ y ^ z) >>> 0;
+  return (value % 100000) / 100000;
+}
+
+function uniformlyDownsample(candidates, maxCount) {
+  if (!Array.isArray(candidates) || candidates.length <= maxCount || maxCount <= 0) {
+    return candidates || [];
+  }
+
+  const out = [];
+  const step = candidates.length / maxCount;
+  let cursor = 0;
+  for (let i = 0; i < maxCount; i += 1) {
+    const idx = Math.min(candidates.length - 1, Math.floor(cursor));
+    out.push(candidates[idx]);
+    cursor += step;
+  }
+  return out;
+}
+
 function addCandidate(candidates, a, b, maxStrokes) {
   if (candidates.length >= maxStrokes) {
     return;
@@ -206,7 +245,7 @@ function addCandidate(candidates, a, b, maxStrokes) {
 function strokeCapForFace(controls, calibratedTone01, metrics, styleWeight = 1) {
   const hardCap = Math.max(16, Math.round(controls.faceStrokeBudget ?? controls.maxStrokes ?? 240));
   const darkness = 1 - clamp(calibratedTone01, 0, 1);
-  const densityScale = clamp(Number(controls.shaderDensity ?? 1), 0.1, 3);
+  const densityScale = densityControl(controls);
   const toneGain = lerp(0.92, 2.36, darkness);
   const areaGain = clamp(Math.sqrt(metrics.area) / 18, 0.72, 2.2);
   const cap = Math.round(hardCap * styleWeight * toneGain * areaGain * Math.pow(densityScale, 0.72));
@@ -216,7 +255,7 @@ function strokeCapForFace(controls, calibratedTone01, metrics, styleWeight = 1) 
 function spacingScale(controls) {
   const coarse = controls.shaderCoarse ? 1.16 : 1;
   const userScale = clamp(Number(controls.shaderSpacingScale ?? 1), 0.42, 1.9);
-  const densityScale = clamp(Number(controls.shaderDensity ?? 1), 0.1, 3);
+  const densityScale = densityControl(controls);
   return coarse * userScale / densityScale;
 }
 
@@ -309,77 +348,9 @@ function hatchCandidates(face, metrics, angleDeg, gap, maxStrokes, jitter = 0, r
   return candidates;
 }
 
-function intersectLines(p0, p1, q0, q1) {
-  const r = { x: p1.x - p0.x, y: p1.y - p0.y };
-  const s = { x: q1.x - q0.x, y: q1.y - q0.y };
-  const denom = r.x * s.y - r.y * s.x;
-  if (Math.abs(denom) < 1e-8) {
-    return null;
-  }
-
-  const qp = { x: q0.x - p0.x, y: q0.y - p0.y };
-  const t = (qp.x * s.y - qp.y * s.x) / denom;
-  return {
-    x: p0.x + r.x * t,
-    y: p0.y + r.y * t
-  };
-}
-
-function insetConvexPolygon(points, offset) {
-  if (!points || points.length < 3) {
-    return null;
-  }
-
-  let area2 = 0;
-  for (let i = 0; i < points.length; i += 1) {
-    const j = (i + 1) % points.length;
-    area2 += points[i].x * points[j].y - points[j].x * points[i].y;
-  }
-
-  const orientation = area2 >= 0 ? 1 : -1;
-  const shiftedEdges = [];
-
-  for (let i = 0; i < points.length; i += 1) {
-    const a = points[i];
-    const b = points[(i + 1) % points.length];
-    const ex = b.x - a.x;
-    const ey = b.y - a.y;
-    const len = Math.hypot(ex, ey);
-    if (len < 1e-8) {
-      return null;
-    }
-
-    const nx = orientation > 0 ? -ey / len : ey / len;
-    const ny = orientation > 0 ? ex / len : -ex / len;
-
-    shiftedEdges.push({
-      a: { x: a.x + nx * offset, y: a.y + ny * offset },
-      b: { x: b.x + nx * offset, y: b.y + ny * offset }
-    });
-  }
-
-  const out = [];
-  for (let i = 0; i < shiftedEdges.length; i += 1) {
-    const prev = shiftedEdges[(i - 1 + shiftedEdges.length) % shiftedEdges.length];
-    const cur = shiftedEdges[i];
-    const hit = intersectLines(prev.a, prev.b, cur.a, cur.b);
-    if (!hit) {
-      return null;
-    }
-    out.push(hit);
-  }
-
-  const area = polygonArea(out);
-  if (area < 1e-4) {
-    return null;
-  }
-
-  return out;
-}
-
 function gridForFace(face, controls, stepWorld, maxDim = 120) {
-  const frame = faceFrame(face);
-  const scaledStepWorld = clamp(stepWorld * spacingScale(controls), 0.24, 2.8);
+  const frame = faceFrame(face, controls);
+  const scaledStepWorld = clamp(stepWorld * spacingScale(controls), 0.08, 8.5);
   const cols = clamp(Math.round(frame.worldU / scaledStepWorld), 3, maxDim);
   const rows = clamp(Math.round(frame.worldV / scaledStepWorld), 3, maxDim);
 
@@ -623,12 +594,33 @@ function glyphForDarkness(darkness, inkBias = 0.2) {
   return table[glyphIndexForDarkness(darkness, inkBias)].glyph;
 }
 
-function glyphForDarknessVariant(darkness, inkBias, rng, spread = 1) {
+function glyphBlendForDarkness(darkness, inkBias = 0.2) {
   const table = sortedAsciiGlyphCoverage();
-  const base = glyphIndexForDarkness(darkness, inkBias);
-  const delta = spread > 0 ? Math.round((rng() * 2 - 1) * spread) : 0;
-  const idx = clamp(base + delta, 0, table.length - 1);
-  return table[idx].glyph;
+  const target = clamp(darkness + inkBias, 0, 1);
+
+  let hi = 0;
+  while (hi < table.length && table[hi].coverage < target) {
+    hi += 1;
+  }
+
+  if (hi <= 0) {
+    return { glyphA: table[0].glyph, glyphB: table[0].glyph, mix: 0 };
+  }
+  if (hi >= table.length) {
+    const tail = table[table.length - 1].glyph;
+    return { glyphA: tail, glyphB: tail, mix: 0 };
+  }
+
+  const lo = hi - 1;
+  const low = table[lo];
+  const high = table[hi];
+  const span = Math.max(1e-6, high.coverage - low.coverage);
+  const mix = clamp((target - low.coverage) / span, 0, 1);
+  return {
+    glyphA: low.glyph,
+    glyphB: high.glyph,
+    mix
+  };
 }
 
 function emitGlyph(candidates, center, frame, glyph, size, maxStrokes) {
@@ -764,47 +756,13 @@ function crosshatchStyle(face, toneIndex, faceMeta, rng, controls) {
   return ensureMinimumCandidates(makeResult(candidates.slice(0, cap), 0, { spacing: spacingA, tone: toneLevel, diag: metrics.diag, calibratedTone: faceMeta.calibratedTone }), face, toneLevel);
 }
 
-function concentricStyle(face, toneIndex, faceMeta, _rng, controls) {
+function stippleStyle(face, toneIndex, faceMeta, _rng, controls) {
   const metrics = faceMetrics(face);
   const darkness = faceMeta.darkness;
   const toneLevel = clamp(Math.round(darkness * 5), 0, 5);
-  const cap = strokeCapForFace(controls, faceMeta.calibratedTone, metrics, 1.34);
-  const ringCount = Math.round(sampleStops([3, 5, 7, 10, 14, 20], darkness));
-  const spacing = clamp((Math.min(metrics.width, metrics.height) / (ringCount + 1)) * 0.58 * spacingScale(controls), 0.18, metrics.diag * 0.32);
-
-  const candidates = [];
-  let current = face.points || [];
-
-  for (let i = 0; i < ringCount; i += 1) {
-    const inset = insetConvexPolygon(current, spacing);
-    if (!inset || inset.length < 3) {
-      break;
-    }
-
-    for (let j = 0; j < inset.length; j += 1) {
-      if (candidates.length >= cap) {
-        break;
-      }
-      const k = (j + 1) % inset.length;
-      addCandidate(candidates, inset[j], inset[k], cap);
-    }
-
-    current = inset;
-    if (candidates.length >= cap) {
-      break;
-    }
-  }
-
-  return ensureMinimumCandidates(makeResult(candidates, 0, { spacing, tone: toneLevel, diag: metrics.diag, calibratedTone: faceMeta.calibratedTone }), face, toneLevel);
-}
-
-function stippleStyle(face, toneIndex, faceMeta, rng, controls) {
-  const metrics = faceMetrics(face);
-  const darkness = faceMeta.darkness;
-  const toneLevel = clamp(Math.round(darkness * 5), 0, 5);
-  const cap = strokeCapForFace(controls, faceMeta.calibratedTone, metrics, 2.08);
-  const grid = gridForFace(face, controls, sampleStops([0.92, 0.84, 0.76, 0.66, 0.58, 0.5], darkness), 320);
-  const density = sampleStops([0.82, 0.9, 0.95, 0.98, 1, 1], darkness);
+  const cap = strokeCapForFace(controls, faceMeta.calibratedTone, metrics, 2.28);
+  const grid = gridForFace(face, controls, sampleStops([0.86, 0.76, 0.68, 0.6, 0.52, 0.44], darkness), 520);
+  const density = sampleStops([0.38, 0.52, 0.66, 0.78, 0.9, 0.98], darkness);
 
   const minDist = Math.max(0.08, grid.cellScreen * 0.38);
   const hashStep = Math.max(minDist, 0.18);
@@ -836,14 +794,11 @@ function stippleStyle(face, toneIndex, faceMeta, rng, controls) {
     return true;
   };
 
+  const emitCap = Math.min(120000, Math.max(cap * 4, cap + 2400));
   for (let row = 0; row < grid.rows; row += 1) {
-    if (candidates.length >= cap) {
-      break;
-    }
-
     for (let col = 0; col < grid.cols; col += 1) {
-      if (candidates.length >= cap) {
-        break;
+      if (candidates.length >= emitCap) {
+        continue;
       }
 
       const u = (col + 0.5) * grid.cellU;
@@ -854,13 +809,13 @@ function stippleStyle(face, toneIndex, faceMeta, rng, controls) {
       }
 
       cellsTested += 1;
-      if (rng() > density) {
+      if (hash2(row, col, 71) > density) {
         continue;
       }
 
       const jitter = 0.36;
-      const ju = (rng() - 0.5) * grid.cellU * jitter;
-      const jv = (rng() - 0.5) * grid.cellV * jitter;
+      const ju = (hash2(row, col, 181) - 0.5) * grid.cellU * jitter;
+      const jv = (hash2(row, col, 281) - 0.5) * grid.cellV * jitter;
       const point = pointFromUv(grid.frame, clamp(u + ju, 0, 1), clamp(v + jv, 0, 1));
       if (!sampleVisibleMask(face, point) || !canPlace(point)) {
         continue;
@@ -875,22 +830,23 @@ function stippleStyle(face, toneIndex, faceMeta, rng, controls) {
       hash.get(key).push(idx);
 
       const dashTone = toneLevel >= 4 ? toneLevel : Math.max(1, toneLevel - 1);
-      emitCellMark(candidates, point, grid.frame, grid.cellScreen * 0.18, dashTone, cap);
-      if (toneLevel >= 4 && candidates.length < cap) {
-        const angle = rng() * Math.PI;
+      emitCellMark(candidates, point, grid.frame, grid.cellScreen * 0.18, dashTone, emitCap);
+      if (toneLevel >= 4 && candidates.length < emitCap) {
+        const angle = hash2(row, col, 991) * Math.PI;
         const dir = { x: Math.cos(angle), y: Math.sin(angle) };
         const dash = Math.max(0.06, grid.cellScreen * 0.14);
         addCandidate(
           candidates,
           pointFromCenterOffset(point, dir, -dash),
           pointFromCenterOffset(point, dir, dash),
-          cap
+          emitCap
         );
       }
     }
   }
 
-  return ensureMinimumCandidates(makeResult(candidates, cellsTested, { spacing: grid.cellScreen, tone: toneLevel, diag: metrics.diag, calibratedTone: faceMeta.calibratedTone }), face, toneLevel);
+  const balanced = uniformlyDownsample(candidates, cap);
+  return ensureMinimumCandidates(makeResult(balanced, cellsTested, { spacing: grid.cellScreen, tone: toneLevel, diag: metrics.diag, calibratedTone: faceMeta.calibratedTone }), face, toneLevel);
 }
 
 const BAYER_8 = [
@@ -908,22 +864,19 @@ function orderedDitherStyle(face, toneIndex, faceMeta, _rng, controls) {
   const metrics = faceMetrics(face);
   const darkness = faceMeta.darkness;
   const toneLevel = clamp(Math.round(darkness * 5), 0, 5);
-  const cap = strokeCapForFace(controls, faceMeta.calibratedTone, metrics, 2.42);
-  const capBoost = Math.min(cap, Math.round(cap * 1.18));
-  const grid = gridForFace(face, controls, sampleStops([0.72, 0.66, 0.58, 0.52, 0.46, 0.4], darkness), 380);
+  const cap = strokeCapForFace(controls, faceMeta.calibratedTone, metrics, 2.7);
+  const emitCap = Math.min(120000, Math.max(cap * 3, cap + 2200));
+  const grid = gridForFace(face, controls, sampleStops([0.66, 0.6, 0.54, 0.48, 0.42, 0.36], darkness), 520);
 
   const candidates = [];
   let cellsTested = 0;
-  const target = clamp(darkness * 1.15 + 0.28, 0.34, 0.999);
-  const phase = Math.abs(face.id || 0) % 8;
+  const target = clamp(darkness * 1.14 + 0.22, 0.2, 0.999);
+  const phase = 0;
 
   for (let row = 0; row < grid.rows; row += 1) {
-    if (candidates.length >= cap) {
-      break;
-    }
     for (let col = 0; col < grid.cols; col += 1) {
-      if (candidates.length >= capBoost) {
-        break;
+      if (candidates.length >= emitCap) {
+        continue;
       }
 
       const center = pointFromUv(grid.frame, (col + 0.5) * grid.cellU, (row + 0.5) * grid.cellV);
@@ -937,35 +890,32 @@ function orderedDitherStyle(face, toneIndex, faceMeta, _rng, controls) {
         continue;
       }
 
-      emitDitherMark(candidates, center, grid.frame, grid.cellScreen * 0.28, toneLevel, row, col, capBoost);
+      emitDitherMark(candidates, center, grid.frame, grid.cellScreen * 0.26, toneLevel, row, col, emitCap);
     }
   }
 
-  return ensureMinimumCandidates(makeResult(candidates, cellsTested, { spacing: grid.cellScreen, tone: toneLevel, diag: metrics.diag, calibratedTone: faceMeta.calibratedTone }), face, toneLevel);
+  const balanced = uniformlyDownsample(candidates, cap);
+  return ensureMinimumCandidates(makeResult(balanced, cellsTested, { spacing: grid.cellScreen, tone: toneLevel, diag: metrics.diag, calibratedTone: faceMeta.calibratedTone }), face, toneLevel);
 }
 
 function errorDiffusionStyle(face, toneIndex, faceMeta, _rng, controls) {
   const metrics = faceMetrics(face);
   const darkness = faceMeta.darkness;
   const toneLevel = clamp(Math.round(darkness * 5), 0, 5);
-  const cap = strokeCapForFace(controls, faceMeta.calibratedTone, metrics, 2.38);
-  const capBoost = Math.min(cap, Math.round(cap * 1.2));
-  const grid = gridForFace(face, controls, sampleStops([0.7, 0.64, 0.56, 0.5, 0.44, 0.38], darkness), 380);
+  const cap = strokeCapForFace(controls, faceMeta.calibratedTone, metrics, 2.66);
+  const emitCap = Math.min(120000, Math.max(cap * 3, cap + 2200));
+  const grid = gridForFace(face, controls, sampleStops([0.64, 0.58, 0.52, 0.46, 0.4, 0.34], darkness), 520);
 
-  const target = clamp(darkness * 1.18 + 0.24, 0.3, 0.999);
+  const target = clamp(darkness * 1.12 + 0.2, 0.18, 0.999);
   const err = Array.from({ length: grid.rows + 1 }, () => new Array(grid.cols + 3).fill(0));
   const candidates = [];
   let cellsTested = 0;
 
   for (let row = 0; row < grid.rows; row += 1) {
-    if (candidates.length >= capBoost) {
-      break;
-    }
-
     const serp = row % 2 === 1;
     for (let ci = 0; ci < grid.cols; ci += 1) {
-      if (candidates.length >= capBoost) {
-        break;
+      if (candidates.length >= emitCap) {
+        continue;
       }
 
       const col = serp ? grid.cols - 1 - ci : ci;
@@ -991,47 +941,41 @@ function errorDiffusionStyle(face, toneIndex, faceMeta, _rng, controls) {
         continue;
       }
 
-      emitDitherMark(candidates, center, grid.frame, grid.cellScreen * 0.27, toneLevel, row, col, capBoost);
+      emitDitherMark(candidates, center, grid.frame, grid.cellScreen * 0.25, toneLevel, row, col, emitCap);
     }
   }
 
-  return ensureMinimumCandidates(makeResult(candidates, cellsTested, { spacing: grid.cellScreen, tone: toneLevel, diag: metrics.diag, calibratedTone: faceMeta.calibratedTone }), face, toneLevel);
+  const balanced = uniformlyDownsample(candidates, cap);
+  return ensureMinimumCandidates(makeResult(balanced, cellsTested, { spacing: grid.cellScreen, tone: toneLevel, diag: metrics.diag, calibratedTone: faceMeta.calibratedTone }), face, toneLevel);
 }
 
-function asciiStyle(face, toneIndex, faceMeta, rng, controls, profile = "dense") {
+function asciiStyle(face, toneIndex, faceMeta, _rng, controls, profile = "dense") {
   const metrics = faceMetrics(face);
   const darkness = faceMeta.darkness;
   const toneLevel = clamp(Math.round(darkness * 5), 0, 5);
   const styleConfig = profile === "legacy"
-    ? { cell: 0.68, density: 0.96, glyphScale: 0.42, inkBias: 0.18, passes: 1, hybridThreshold: 0.9 }
+    ? { cell: 0.62, glyphScale: 0.24, glyphs: [".", ":", "-", "+", "#", "%"] }
     : profile === "solid"
-      ? { cell: 0.3, density: 1, glyphScale: 0.28, inkBias: 0.46, passes: 3, hybridThreshold: 0.44 }
-      : { cell: 0.38, density: 1, glyphScale: 0.32, inkBias: 0.38, passes: 2, hybridThreshold: 0.52 };
+      ? { cell: 0.34, glyphScale: 0.32, glyphs: [":", "-", "+", "#", "%", "@"] }
+      : { cell: 0.42, glyphScale: 0.29, glyphs: [".", ":", "-", "+", "#", "@"] };
 
-  const asciiCellSize = clamp(Number(controls.asciiCellSize ?? styleConfig.cell), 0.22, 2.2);
-  const asciiInkBias = clamp(Number(controls.asciiInkBias ?? styleConfig.inkBias), -0.2, 0.6);
-  const asciiOverprintPasses = clamp(Math.round(Number(controls.asciiOverprintPasses ?? styleConfig.passes)), 1, 3);
-
-  const cap = strokeCapForFace(controls, faceMeta.calibratedTone, metrics, 3.1);
-  const grid = gridForFace(face, controls, asciiCellSize, 420);
-  const density = clamp(styleConfig.density * sampleStops([0.96, 0.98, 1, 1, 1, 1], darkness), 0.85, 1);
-  const passLimit = clamp(
-    Math.round(asciiOverprintPasses + (darkness > 0.72 ? 1 : 0)),
-    1,
-    3
-  );
+  const asciiCellSize = clamp(Number(controls.asciiCellSize ?? styleConfig.cell), 0.14, 2.2);
+  const cap = strokeCapForFace(controls, faceMeta.calibratedTone, metrics, 3.2);
+  const grid = gridForFace(face, controls, asciiCellSize, 620);
+  const emitCap = Math.min(140000, Math.max(cap * 3, cap + 2600));
+  const densityScale = densityControl(controls);
+  const skipByTone = [6, 4, 3, 2, 1, 1];
+  const skip = Math.max(1, Math.round(skipByTone[toneLevel] / Math.sqrt(densityScale)));
+  const glyphRamp = styleConfig.glyphs;
+  const baseGlyphIndex = clamp(Math.round((toneLevel / 5) * (glyphRamp.length - 1)), 0, glyphRamp.length - 1);
 
   const candidates = [];
   let cellsTested = 0;
 
   for (let row = 0; row < grid.rows; row += 1) {
-    if (candidates.length >= cap) {
-      break;
-    }
-
     for (let col = 0; col < grid.cols; col += 1) {
-      if (candidates.length >= cap) {
-        break;
+      if (candidates.length >= emitCap) {
+        continue;
       }
 
       const center = pointFromUv(grid.frame, (col + 0.5) * grid.cellU, (row + 0.5) * grid.cellV);
@@ -1040,110 +984,25 @@ function asciiStyle(face, toneIndex, faceMeta, rng, controls, profile = "dense")
       }
 
       cellsTested += 1;
-      if (rng() > density) {
+      if (skip > 1 && ((row + col) % skip) !== 0) {
         continue;
       }
 
-      const localDarkness = clamp(
-        darkness
-        + (rng() - 0.5) * 0.14
-        + ((row + col + face.id) % 5 === 0 ? 0.05 : 0),
-        0,
-        1
-      );
-      const spread = toneLevel >= 4 ? 2 : toneLevel >= 2 ? 1 : 0;
-      const glyph = glyphForDarknessVariant(localDarkness, asciiInkBias, rng, spread);
-      const glyphScale = Math.max(0.11, grid.cellScreen * styleConfig.glyphScale);
-      emitGlyph(candidates, center, grid.frame, glyph, glyphScale, cap);
-
-      for (let pass = 1; pass < passLimit && candidates.length < cap; pass += 1) {
-        const angle = (pass * 37 + row * 3 + col * 5) * (Math.PI / 180);
-        const d1 = { x: Math.cos(angle), y: Math.sin(angle) };
-        const offset = Math.max(0.04, glyphScale * 0.14 * pass);
-        const shifted = {
-          x: center.x + d1.x * offset,
-          y: center.y + d1.y * offset
-        };
-        const passGlyph = pass % 2 === 1
-          ? glyphForDarknessVariant(clamp(localDarkness + 0.08, 0, 1), asciiInkBias + 0.04, rng, spread)
-          : glyphForDarknessVariant(clamp(localDarkness + 0.16, 0, 1), asciiInkBias + 0.1, rng, spread + 1);
-        emitGlyph(candidates, shifted, grid.frame, passGlyph, glyphScale * 0.9, cap);
-      }
-
-      if (darkness > styleConfig.hybridThreshold && candidates.length < cap) {
-        const micro = Math.max(0.07, grid.cellScreen * 0.2);
-        const angle = baseHatchAngle(face) + 90;
-        const dir = { x: Math.cos((angle * Math.PI) / 180), y: Math.sin((angle * Math.PI) / 180) };
-        addCandidate(
-          candidates,
-          pointFromCenterOffset(center, dir, -micro),
-          pointFromCenterOffset(center, dir, micro),
-          cap
-        );
-        if (darkness > 0.78 && candidates.length < cap) {
-          const dir2 = { x: -dir.y, y: dir.x };
-          addCandidate(
-            candidates,
-            pointFromCenterOffset(center, dir2, -micro * 0.9),
-            pointFromCenterOffset(center, dir2, micro * 0.9),
-            cap
-          );
-        }
-      }
+      const t = hash2(row, col, 557);
+      const drift = t > 0.82 ? 1 : t < 0.16 ? -1 : 0;
+      const glyphIndex = clamp(baseGlyphIndex + drift, 0, glyphRamp.length - 1);
+      const glyph = glyphRamp[glyphIndex];
+      const glyphScale = clamp(grid.cellScreen * styleConfig.glyphScale, 0.09, grid.cellScreen * 0.42);
+      emitGlyph(candidates, center, grid.frame, glyph, glyphScale, emitCap);
     }
   }
 
-  return ensureMinimumCandidates(makeResult(candidates, cellsTested, { spacing: grid.cellScreen, tone: toneLevel, diag: metrics.diag, calibratedTone: faceMeta.calibratedTone }), face, toneLevel);
-}
-
-function brickWeaveStyle(face, toneIndex, faceMeta, _rng, controls) {
-  const metrics = faceMetrics(face);
-  const darkness = faceMeta.darkness;
-  const toneLevel = clamp(Math.round(darkness * 5), 0, 5);
-  const cap = strokeCapForFace(controls, faceMeta.calibratedTone, metrics, 1.92);
-  const frame = faceFrame(face);
-  const rowStepWorld = clamp(sampleStops([0.64, 0.58, 0.52, 0.46, 0.4, 0.35], darkness) * spacingScale(controls), 0.2, 1.4);
-  const colStepWorld = clamp(sampleStops([0.48, 0.44, 0.4, 0.36, 0.32, 0.28], darkness) * spacingScale(controls), 0.16, 1.1);
-  const rowCount = clamp(Math.round(frame.worldV / rowStepWorld), 4, 220);
-  const colCount = clamp(Math.round(frame.worldU / colStepWorld), 5, 280);
-  const rowPad = Math.min(0.32, 0.13 / Math.max(1, rowCount));
-
-  const candidates = [];
-
-  for (let row = 0; row <= rowCount && candidates.length < cap; row += 1) {
-    const v = row / rowCount;
-    addCandidate(
-      candidates,
-      pointFromUv(frame, 0, v),
-      pointFromUv(frame, 1, v),
-      cap
-    );
-  }
-
-  for (let row = 0; row < rowCount && candidates.length < cap; row += 1) {
-    const offset = row % 2 === 0 ? 0 : 0.5;
-    for (let col = 0; col <= colCount && candidates.length < cap; col += 1) {
-      let u = (col + offset) / colCount;
-      if (u >= 1) {
-        u -= 1;
-      }
-      const v0 = row / rowCount;
-      const v1 = (row + 1) / rowCount;
-      addCandidate(
-        candidates,
-        pointFromUv(frame, u, clamp(v0 + rowPad, 0, 1)),
-        pointFromUv(frame, u, clamp(v1 - rowPad, 0, 1)),
-        cap
-      );
-    }
-  }
-
-  const screenSpacing = Math.max(0.16, Math.min(frame.uLen2D / colCount, frame.vLen2D / rowCount));
-  return ensureMinimumCandidates(makeResult(candidates, 0, { spacing: screenSpacing, tone: toneLevel, diag: metrics.diag, calibratedTone: faceMeta.calibratedTone }), face, toneLevel);
+  const balanced = uniformlyDownsample(candidates, cap);
+  return ensureMinimumCandidates(makeResult(balanced, cellsTested, { spacing: grid.cellScreen, tone: toneLevel, diag: metrics.diag, calibratedTone: faceMeta.calibratedTone }), face, toneLevel);
 }
 
 function isShadedSide(face) {
-  return face?.shadeKey !== "z_pos";
+  return Boolean(face?.shadeKey && face.shadeKey !== "none");
 }
 
 const SHADER_STYLES = [
@@ -1166,13 +1025,6 @@ const SHADER_STYLES = [
     supportsFace: isShadedSide,
     calibration: { toneContrast: 1.12, minInk: 0.05 },
     generate: (face, toneIndex, meta, rng, controls) => crosshatchStyle(face, toneIndex, meta, rng, controls)
-  },
-  {
-    id: "concentric",
-    label: "Concentric (Rings)",
-    supportsFace: isShadedSide,
-    calibration: { toneContrast: 1.08, minInk: 0.04 },
-    generate: (face, toneIndex, meta, rng, controls) => concentricStyle(face, toneIndex, meta, rng, controls)
   },
   {
     id: "stipple",
@@ -1203,13 +1055,6 @@ const SHADER_STYLES = [
     generate: (face, toneIndex, meta, rng, controls) => asciiStyle(face, toneIndex, meta, rng, controls, "dense")
   },
   {
-    id: "brick-weave",
-    label: "Brick/Weave",
-    supportsFace: isShadedSide,
-    calibration: { toneContrast: 1.16, minInk: 0.05 },
-    generate: (face, toneIndex, meta, rng, controls) => brickWeaveStyle(face, toneIndex, meta, rng, controls)
-  },
-  {
     id: "ascii-legacy",
     label: "ASCII (Legacy)",
     hidden: true,
@@ -1229,7 +1074,6 @@ const SHADER_STYLES = [
 
 const SHADER_STYLE_MAP = new Map(SHADER_STYLES.map((style) => [style.id, style]));
 const SHADER_STYLE_ALIASES = new Map([
-  ["contour-bands", "concentric"],
   ["ascii-dense", "ascii"],
   ["ascii-solid", "ascii-solid"],
   ["ascii-legacy", "ascii-legacy"]
@@ -1247,7 +1091,9 @@ export function generateFaceShaderStrokes(face, controls) {
   const toneIndex = toneIndexForFace(face);
   const baseTone01 = toneIndex / 5;
   const calibration = resolveToneCalibration(controls, style?.calibration);
-  const calibratedTone = calibrateTone01(baseTone01, calibration);
+  const density = densityControl(controls);
+  const darknessBias = clamp((density - 1) * 0.16, -0.46, 0.46);
+  const calibratedTone = clamp(calibrateTone01(baseTone01, calibration) - darknessBias, 0, 1);
   const faceMeta = {
     tone01: baseTone01,
     calibratedTone,

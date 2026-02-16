@@ -55,7 +55,7 @@ function faceFill(face) {
   const tone = Number.isFinite(face.toneIndex)
     ? Math.max(0, Math.min(5, Math.round(face.toneIndex)))
     : 2;
-  return palette[tone];
+  return palette[5 - tone];
 }
 
 function pathFromStrokes(strokes, dx, dy) {
@@ -93,7 +93,7 @@ export function buildPreviewSvg(scene, toggles, viewport = {}) {
   const panY = Number(viewport.panY) || 0;
   const tx = width * 0.5 + panX;
   const ty = height * 0.5 + panY;
-  const shaderPenWidth = Math.max(0.2, Number(toggles.shaderPenWidth ?? scene.meta?.shaderPenWidth ?? 0.56));
+  const shaderPenWidth = Math.max(0.05, Number(toggles.shaderPenWidth ?? scene.meta?.shaderPenWidth ?? 0.56));
 
   const facePolygons = scene.faces
     .map((face) => `<polygon points="${polygonMarkup(face.points, dx, dy)}" fill="${faceFill(face)}" />`)
@@ -183,7 +183,7 @@ export function buildExportSvg(scene, meta) {
   const title = meta?.title || "Iso Plot Export";
   const seed = meta?.seed ?? "unknown";
   const shaderEnabled = meta?.shaderEnabled !== false;
-  const shaderPenWidth = Math.max(0.2, Number(meta?.shaderPenWidth ?? scene.meta?.shaderPenWidth ?? 0.52));
+  const shaderPenWidth = Math.max(0.05, Number(meta?.shaderPenWidth ?? scene.meta?.shaderPenWidth ?? 0.52));
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${format(metrics.width)}" height="${format(metrics.height)}" viewBox="0 0 ${format(metrics.width)} ${format(metrics.height)}">

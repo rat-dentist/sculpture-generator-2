@@ -18,6 +18,22 @@ function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
+function evenlySample(items, count) {
+  if (!Array.isArray(items) || items.length <= count || count <= 0) {
+    return items || [];
+  }
+
+  const out = [];
+  const step = items.length / count;
+  let cursor = 0;
+  for (let i = 0; i < count; i += 1) {
+    const idx = Math.min(items.length - 1, Math.floor(cursor));
+    out.push(items[idx]);
+    cursor += step;
+  }
+  return out;
+}
+
 function normalize3(vector) {
   const length = Math.hypot(vector.x, vector.y, vector.z) || 1;
   return {
@@ -480,7 +496,12 @@ function clipStrokeByDepthBuffer(stroke, ctx, debugSamples = null, options = {})
   const steps = Math.max(minSamples, Math.ceil((length * ctx.scale) / sampleSpacingPx));
   const kept = [];
   const sampleEvery = Math.max(1, Math.floor((steps + 1) / 24));
-  const depthEps = Math.max(0.0015, 0.007 / Math.max(0.5, ctx.scale));
+  const depthEps = Math.max(
+    0.0015,
+    Number.isFinite(options.depthBias)
+      ? Number(options.depthBias)
+      : 0.007 / Math.max(0.5, ctx.scale)
+  );
   const samples = [];
   const minVisibleRun = Math.max(1, Math.round(options.minVisibleRun ?? 2));
   const maxHiddenGap = Math.max(0, Math.round(options.maxHiddenGap ?? 3));
@@ -1357,7 +1378,7 @@ export function buildStrokeScene(faces, controls, options = {}) {
   const shaderBudget = {
     used: 0,
     clipped: 0,
-    maxStrokes: fastMode ? 9000 : 18000
+    maxStrokes: fastMode ? 18000 : 36000
   };
   const shaderControls = {
     ...controls,
@@ -1408,7 +1429,7 @@ export function buildStrokeScene(faces, controls, options = {}) {
 
   const shaderFaces = controls.shaderPreset === "off"
     ? []
-    : faces.filter((face) => face.shadeKey !== "z_pos"
+    : faces.filter((face) => face.shadeKey !== "none"
       && polygonArea2(face.points || []) >= 0.2
       && Number(face.visibleCoverage || 0) > 0.001);
   shaderIntegrity.facesConsidered = shaderFaces.length;
@@ -1416,12 +1437,13 @@ export function buildStrokeScene(faces, controls, options = {}) {
   const shaderWeights = shaderFaces.map((face) => {
     const area = polygonArea2(face.points || []);
     const tone = clamp((Number.isFinite(face.toneIndex) ? face.toneIndex : 2.5) / 5, 0, 1);
+    const darkness = 1 - tone;
     const coverage = clamp(Number(face.visibleCoverage || 0.02), 0.02, 1);
-    return Math.max(1, Math.sqrt(Math.max(4, area)) * coverage * lerp(0.92, 2.62, tone));
+    return Math.max(1, Math.sqrt(Math.max(4, area)) * coverage * lerp(0.92, 2.62, darkness));
   });
   const shaderFloor = shaderFaces.map((face) => {
     const tone = Number.isFinite(face.toneIndex) ? face.toneIndex : 0;
-    return tone >= 5 ? 28 : tone >= 4 ? 21 : tone >= 3 ? 15 : tone >= 2 ? 10 : tone >= 1 ? 7 : 5;
+    return tone <= 0 ? 34 : tone <= 1 ? 28 : tone <= 2 ? 22 : tone <= 3 ? 16 : tone <= 4 ? 11 : 7;
   });
   const floorTotal = shaderFloor.reduce((sum, value) => sum + value, 0);
   const floorScale = floorTotal > 0 && floorTotal > shaderBudgetPool
@@ -1442,18 +1464,23 @@ export function buildStrokeScene(faces, controls, options = {}) {
     }
 
     const face = shaderFaces[index];
+    const toneIndex = Number.isFinite(face.toneIndex) ? face.toneIndex : 0;
+    const toneLevel = clamp(Math.round(toneIndex), 0, 5);
     const faceWeight = shaderWeights[index];
     const baseBudget = Math.min(shaderFloorScaled[index] ?? 0, remainingShaderBudget);
     const weightedExtra = remainingWeight > 1e-6
       ? Math.round((remainingWeightedPool * faceWeight) / remainingWeight)
       : 0;
-    const perFaceBudget = Math.max(1, Math.min(remainingShaderBudget, baseBudget + Math.max(0, weightedExtra)));
-    const toneIndex = Number.isFinite(face.toneIndex) ? face.toneIndex : 0;
-    const toneLevel = clamp(Math.round(toneIndex), 0, 5);
+    const floorByTone = [84, 68, 52, 36, 24, 16];
+    const desiredBudget = Math.max(
+      floorByTone[toneLevel],
+      Math.max(1, Math.min(remainingShaderBudget, baseBudget + Math.max(0, weightedExtra)))
+    );
+    const perFaceBudget = Math.max(1, Math.min(remainingShaderBudget, desiredBudget));
     const area = polygonArea2(face.points || []);
     const coverage = clamp(Number(face.visibleCoverage || 0.1), 0.04, 1);
     const areaScale = clamp((Math.sqrt(Math.max(1, area)) / 11) * coverage, 0.35, 1.25);
-    const minMarksByTone = [5, 8, 12, 19, 30, 44];
+    const minMarksByTone = [44, 32, 22, 14, 9, 6];
     const minFaceMarks = Math.max(3, Math.round(minMarksByTone[toneLevel] * areaScale));
 
     const shader = generateFaceShaderStrokes(face, {
@@ -1479,7 +1506,7 @@ export function buildStrokeScene(faces, controls, options = {}) {
       face,
       {
         minimumLength: shaderMinSegment,
-        insetEpsilon: Math.max(0.01, shaderMinSegment * 0.18),
+        insetEpsilon: Math.max(0.015, shaderMinSegment * 0.26),
         useVisibleMaskClip: false,
         debugPreClip: shaderDebugLayers?.preClipCandidates || null,
         debugPostFace: shaderDebugLayers?.postFaceClip || null
@@ -1512,7 +1539,7 @@ export function buildStrokeScene(faces, controls, options = {}) {
         face,
         {
           minimumLength: retryMinSeg,
-          insetEpsilon: Math.max(0.01, retryMinSeg * 0.18),
+          insetEpsilon: Math.max(0.015, retryMinSeg * 0.26),
           useVisibleMaskClip: false,
           debugPreClip: shaderDebugLayers?.preClipCandidates || null,
           debugPostFace: shaderDebugLayers?.postFaceClip || null
@@ -1546,7 +1573,7 @@ export function buildStrokeScene(faces, controls, options = {}) {
     }
 
     const allowed = Math.max(0, shaderBudget.maxStrokes - shaderBudget.used);
-    const kept = faceClip.strokes.slice(0, allowed);
+    const kept = evenlySample(faceClip.strokes, allowed);
     shaderIntegrity.marksRemovedBudget += Math.max(0, faceClip.strokes.length - kept.length);
     layers.shader.push(...kept);
     shaderBudget.used += kept.length;
@@ -1615,28 +1642,30 @@ export function buildStrokeScene(faces, controls, options = {}) {
   const shaderOcclusion = fastMode
     ? occludeLayer(layers.shader, depthBuffer, sampleDebug, {
       cleanup: false,
-      minSegment: controls.minSegment * 0.9,
+      minSegment: controls.minSegment * 0.8,
       clip: {
-        minSamples: 10,
-        sampleSpacingPx: 1.5,
-        minVisibleRun: 1,
-        maxHiddenGap: 1,
-        trimRatio: 0.003,
-        trimPixelCap: 0.007,
-        minPixelLength: 0.16
+        minSamples: 14,
+        sampleSpacingPx: 1.2,
+        minVisibleRun: 2,
+        maxHiddenGap: 3,
+        trimRatio: 0.002,
+        trimPixelCap: 0.006,
+        minPixelLength: 0.12,
+        depthBias: 0.016
       }
     })
     : occludeLayer(layers.shader, depthBuffer, sampleDebug, {
       cleanup: false,
-      minSegment: controls.minSegment * 0.6,
+      minSegment: controls.minSegment * 0.54,
       clip: {
-        minSamples: 14,
-        sampleSpacingPx: 1.2,
-        minVisibleRun: 1,
-        maxHiddenGap: 2,
-        trimRatio: 0.006,
-        trimPixelCap: 0.012,
-        minPixelLength: 0.11
+        minSamples: 18,
+        sampleSpacingPx: 1.0,
+        minVisibleRun: 2,
+        maxHiddenGap: 4,
+        trimRatio: 0.004,
+        trimPixelCap: 0.01,
+        minPixelLength: 0.09,
+        depthBias: 0.012
       }
     });
   const occluded = {
@@ -1749,7 +1778,7 @@ export function buildStrokeScene(faces, controls, options = {}) {
       shader: stripDepth(occluded.shader)
     },
     meta: {
-      shaderPenWidth: Math.max(0.2, Number(controls.shaderPenWidth ?? 0.56))
+      shaderPenWidth: Math.max(0.05, Number(controls.shaderPenWidth ?? 0.56))
     },
     stats: {
       faceCount: faces.length,

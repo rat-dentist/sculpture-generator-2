@@ -240,8 +240,8 @@ function checked(id) {
 function readSettings() {
   const seed = integer("seed", 1042);
   const shaderPreset = document.getElementById("shader-style")?.value || "off";
-  const shaderPenWidth = clamp(numeric("shader-pen-width", 0.56), 0.1, 3);
-  const shaderDensity = clamp(numeric("shader-density", 1), 0.1, 3);
+  const shaderPenWidth = clamp(numeric("shader-pen-width", 0.56), 0.05, 6);
+  const shaderDensity = clamp(numeric("shader-density", 1), 0.02, 6);
   const showOcclusionDebug = checked("show-occlusion-debug");
   const showOcclusionText = checked("show-occlusion-text");
   const showEdgePreMerge = checked("show-edge-premerge");
