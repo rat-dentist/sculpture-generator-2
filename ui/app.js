@@ -240,6 +240,8 @@ function checked(id) {
 function readSettings() {
   const seed = integer("seed", 1042);
   const shaderPreset = document.getElementById("shader-style")?.value || "off";
+  const shaderPenWidth = clamp(numeric("shader-pen-width", 0.56), 0.1, 3);
+  const shaderDensity = clamp(numeric("shader-density", 1), 0.1, 3);
   const showOcclusionDebug = checked("show-occlusion-debug");
   const showOcclusionText = checked("show-occlusion-text");
   const showEdgePreMerge = checked("show-edge-premerge");
@@ -247,6 +249,7 @@ function readSettings() {
   const showEndpointClusters = checked("show-endpoint-clusters");
   const showShaderIntegrityDebug = checked("show-shader-integrity-debug");
   const showShaderFacePolygons = checked("show-shader-face-polygons");
+  const showShaderCoverage = checked("show-shader-coverage");
   const showShaderPreClip = checked("show-shader-preclip");
   const showShaderPostFaceClip = checked("show-shader-postface");
   const showShaderFinalClip = checked("show-shader-final");
@@ -302,6 +305,8 @@ function readSettings() {
       occlusionDebug: debugEnabled,
       shaderIntegrityDebug: showShaderIntegrityDebug,
       shaderPreset,
+      shaderPenWidth,
+      shaderDensity,
       maxStrokes: 3000,
       minSegment: 0.8
     },
@@ -310,6 +315,7 @@ function readSettings() {
       showOutline: checked("show-outline"),
       showInternal: checked("show-internal"),
       shaderEnabled: shaderPreset !== "off",
+      shaderPenWidth,
       showOcclusionDebug: showOcclusionDebug,
       showOcclusionText: showOcclusionText,
       showEdgePreMerge: showEdgePreMerge,
@@ -317,6 +323,7 @@ function readSettings() {
       showEndpointClusters: showEndpointClusters,
       showShaderIntegrityDebug: showShaderIntegrityDebug,
       showShaderFacePolygons: showShaderFacePolygons && showShaderIntegrityDebug,
+      showShaderCoverage: showShaderCoverage && showShaderIntegrityDebug,
       showShaderPreClip: showShaderPreClip && showShaderIntegrityDebug,
       showShaderPostFaceClip: showShaderPostFaceClip && showShaderIntegrityDebug,
       showShaderFinalClip: showShaderFinalClip && showShaderIntegrityDebug
@@ -444,14 +451,16 @@ function buildScene(settings, forceFormRebuild = false, interactive = false) {
 
   const pivot = modelPivot(cache.rawFaces);
   const view = { ...settings.view, pivot };
-  const projectedFaces = projectFaces(cache.rawFaces, view, {
-    fastOrder: interactive
+  const projection = projectFaces(cache.rawFaces, view, {
+    coarseVisibility: false,
+    includeDepthPreview: Boolean(settings.preview?.showOcclusionDebug) && !interactive
   });
-  cache.scene = buildStrokeScene(projectedFaces, {
+  cache.scene = buildStrokeScene(projection.faces, {
     ...settings.mark,
     shaderCoarse: interactive
   }, {
-    fastMode: interactive
+    fastMode: interactive,
+    visibilityContext: projection.visibilityContext
   });
   cache.lastSettings = { ...settings, view };
   cache.formRebuilt = formRebuilt;
@@ -601,7 +610,12 @@ function updateValueBadges() {
     if (!input) {
       continue;
     }
-    badge.textContent = input.value;
+    if (input.type === "range") {
+      const value = Number(input.value);
+      badge.textContent = Number.isFinite(value) ? value.toFixed(2) : input.value;
+    } else {
+      badge.textContent = input.value;
+    }
   }
 }
 
@@ -769,7 +783,8 @@ async function exportCurrentSvg() {
   const svg = buildExportSvg(cache.scene, {
     title: "Iso Plot Export",
     seed: settings.seed,
-    shaderEnabled: settings.mark.shaderPreset !== "off"
+    shaderEnabled: settings.mark.shaderPreset !== "off",
+    shaderPenWidth: settings.mark.shaderPenWidth
   });
   const defaultName = makeDefaultExportName("svg");
 

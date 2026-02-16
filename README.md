@@ -11,12 +11,15 @@ Desktop app for generating voxel-based isometric forms and plotter-friendly pen 
   - validation/re-roll loop to keep forms single-component and watertight at voxel-surface extraction stage
   - merged exposed-face meshing (large planar faces, not tiny per-voxel faces)
 - Mark engine:
-  - hatch
+  - lines
   - crosshatch
+  - concentric rings
+  - ASCII glyph shading
+  - ordered dither
+  - error diffusion
   - stipple
-  - concentric contour rings
+  - brick/weave
   - silhouette/internal edge hierarchy
-  - optional ground shadow stripes
 - Export:
   - SVG grouped by pen layer:
     - `pen_a_outline`
@@ -60,6 +63,6 @@ npm run test:stl
 - `ui/engine/mesher.js`: exposed face extraction + greedy merge
 - `ui/engine/mesh-export.js`: fused face triangulation + STL export
 - `ui/engine/projection.js`: isometric projection + face visibility
-- `ui/engine/mark-engine.js`: hatch/crosshatch/stipple/contour stroke generation
+- `ui/engine/mark-engine.js`: outline/internal/shader stroke generation + occlusion
 - `ui/engine/svg-export.js`: preview SVG + export SVG assembly
 

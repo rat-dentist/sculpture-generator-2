@@ -1,5 +1,5 @@
 import { buildPreviewSvg } from "../ui/engine/svg-export.js";
-import { toneIndexForFace } from "../ui/engine/projection.js";
+import { projectFaces, toneIndexForFace } from "../ui/engine/projection.js";
 import { generateFaceShaderStrokes } from "../ui/engine/shader-styles.js";
 
 function testSixTonePalette() {
@@ -87,7 +87,7 @@ function testShaderStylesEmit() {
     shaderCoarse: false
   };
 
-  for (const shaderPreset of ["lines", "crosshatch", "contour-bands", "ascii", "ordered-dither", "error-diffusion", "stipple"]) {
+  for (const shaderPreset of ["lines", "crosshatch", "concentric", "stipple", "ordered-dither", "error-diffusion", "ascii", "brick-weave", "contour-bands", "ascii-legacy", "ascii-solid"]) {
     const shader = generateFaceShaderStrokes(face, {
       ...controlsBase,
       shaderPreset
@@ -98,7 +98,65 @@ function testShaderStylesEmit() {
   }
 }
 
+function makeCubeFaces(size = 1) {
+  const s = size;
+  return [
+    { id: 1, normal: { x: 1, y: 0, z: 0 }, area: s * s, corners: [{ x: s, y: 0, z: 0 }, { x: s, y: s, z: 0 }, { x: s, y: s, z: s }, { x: s, y: 0, z: s }] },
+    { id: 2, normal: { x: -1, y: 0, z: 0 }, area: s * s, corners: [{ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: s }, { x: 0, y: s, z: s }, { x: 0, y: s, z: 0 }] },
+    { id: 3, normal: { x: 0, y: 1, z: 0 }, area: s * s, corners: [{ x: 0, y: s, z: 0 }, { x: 0, y: s, z: s }, { x: s, y: s, z: s }, { x: s, y: s, z: 0 }] },
+    { id: 4, normal: { x: 0, y: -1, z: 0 }, area: s * s, corners: [{ x: 0, y: 0, z: 0 }, { x: s, y: 0, z: 0 }, { x: s, y: 0, z: s }, { x: 0, y: 0, z: s }] },
+    { id: 5, normal: { x: 0, y: 0, z: 1 }, area: s * s, corners: [{ x: 0, y: 0, z: s }, { x: s, y: 0, z: s }, { x: s, y: s, z: s }, { x: 0, y: s, z: s }] },
+    { id: 6, normal: { x: 0, y: 0, z: -1 }, area: s * s, corners: [{ x: 0, y: 0, z: 0 }, { x: 0, y: s, z: 0 }, { x: s, y: s, z: 0 }, { x: s, y: 0, z: 0 }] }
+  ];
+}
+
+function testCubeProjectionAndShaderCoverage() {
+  const cubeFaces = makeCubeFaces(1);
+  const projection = projectFaces(
+    cubeFaces,
+    {
+      yawDeg: 40,
+      pitchDeg: 0,
+      scale: 48,
+      pivot: { x: 0.5, y: 0.5, z: 0.5 }
+    },
+    { coarseVisibility: false }
+  );
+
+  if ((projection.faces || []).length < 2) {
+    throw new Error(`Expected at least 2 visible cube faces, got ${(projection.faces || []).length}`);
+  }
+
+  const toneCount = new Set((projection.faces || []).map((face) => face.toneIndex)).size;
+  if (toneCount < 2) {
+    throw new Error(`Expected at least 2 distinct tone indices on cube, got ${toneCount}`);
+  }
+
+  let shaded = 0;
+  for (const face of projection.faces || []) {
+    if (face.faceType === "top") {
+      continue;
+    }
+    const shader = generateFaceShaderStrokes(face, {
+      seed: 1337,
+      shaderPreset: "lines",
+      maxStrokes: 5000,
+      minSegment: 0.8,
+      shaderCoarse: false,
+      faceStrokeBudget: 320
+    });
+    if ((shader.strokes || []).length > 0) {
+      shaded += 1;
+    }
+  }
+
+  if (shaded < 2) {
+    throw new Error(`Expected at least 2 shaded side faces on cube, got ${shaded}`);
+  }
+}
+
 testSixTonePalette();
 testToneIndexMapping();
 testShaderStylesEmit();
+testCubeProjectionAndShaderCoverage();
 console.log("shader regression ok");

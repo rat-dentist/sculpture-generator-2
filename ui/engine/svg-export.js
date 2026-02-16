@@ -93,6 +93,7 @@ export function buildPreviewSvg(scene, toggles, viewport = {}) {
   const panY = Number(viewport.panY) || 0;
   const tx = width * 0.5 + panX;
   const ty = height * 0.5 + panY;
+  const shaderPenWidth = Math.max(0.2, Number(toggles.shaderPenWidth ?? scene.meta?.shaderPenWidth ?? 0.56));
 
   const facePolygons = scene.faces
     .map((face) => `<polygon points="${polygonMarkup(face.points, dx, dy)}" fill="${faceFill(face)}" />`)
@@ -113,8 +114,13 @@ export function buildPreviewSvg(scene, toggles, viewport = {}) {
   const shaderPreClipPath = pathFromStrokes(shaderIntegrity?.preClipCandidates || [], dx, dy);
   const shaderPostFacePath = pathFromStrokes(shaderIntegrity?.postFaceClip || [], dx, dy);
   const shaderPostOcclusionPath = pathFromStrokes(shaderIntegrity?.postOcclusion || [], dx, dy);
+  const shaderFaceBoundsPath = pathFromStrokes(shaderIntegrity?.faceBounds || [], dx, dy);
+  const shaderCoveragePath = pathFromStrokes(shaderIntegrity?.visibleFragments || [], dx, dy);
   const shaderFacePolygons = (shaderIntegrity?.shadedFacePolygons || [])
-    .map((points) => `<polygon points="${polygonMarkup(points, dx, dy)}" fill="#f59e0b" fill-opacity="0.14" stroke="#f59e0b" stroke-width="0.2" />`)
+    .map((points) => `<polygon points="${polygonMarkup(points, dx, dy)}" fill="#f59e0b" fill-opacity="0.08" stroke="#f59e0b" stroke-width="0.2" />`)
+    .join("");
+  const shaderToneLabels = (shaderIntegrity?.toneLabels || [])
+    .map((label) => `<text x="${format(label.x + dx)}" y="${format(label.y + dy)}" fill="#b45309" font-size="7.2" font-family="monospace">${label.text}</text>`)
     .join("");
   const debugLabels = (scene.debug?.occlusion?.faceLabels || [])
     .map((label) => `<text x="${format(label.x + dx)}" y="${format(label.y + dy)}" fill="#1f2937" font-size="8" font-family="monospace">${label.text}</text>`)
@@ -141,10 +147,11 @@ export function buildPreviewSvg(scene, toggles, viewport = {}) {
   <rect x="0" y="0" width="${format(width)}" height="${format(height)}" fill="#f8f5ee" />
   <g transform="translate(${format(tx)} ${format(ty)}) scale(${format(zoom)})">
   ${toggles.showFaces ? `<g id="faces" stroke="none">${facePolygons}</g>` : ""}
+  ${toggles.shaderEnabled ? `<path d="${shaderPath}" fill="none" stroke="#222222" stroke-width="${format(shaderPenWidth)}" stroke-linecap="butt" stroke-linejoin="round" />` : ""}
   ${toggles.showOutline ? `<path d="${outlinePath}" fill="none" stroke="#121212" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" />` : ""}
   ${toggles.showInternal ? `<path d="${internalPath}" fill="none" stroke="#707070" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round" />` : ""}
-  ${toggles.shaderEnabled ? `<path d="${shaderPath}" fill="none" stroke="#222222" stroke-width="0.56" stroke-linecap="butt" stroke-linejoin="round" />` : ""}
-  ${toggles.showShaderFacePolygons ? `<g id="shader_debug_faces">${shaderFacePolygons}</g>` : ""}
+  ${toggles.showShaderFacePolygons ? `<g id="shader_debug_faces">${shaderFacePolygons}${shaderFaceBoundsPath ? `<path d="${shaderFaceBoundsPath}" fill="none" stroke="#0369a1" stroke-width="0.24" stroke-dasharray="1.6 1.1" />` : ""}${shaderToneLabels}</g>` : ""}
+  ${toggles.showShaderCoverage ? `<path d="${shaderCoveragePath}" fill="none" stroke="#0ea5e9" stroke-width="0.26" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.92" />` : ""}
   ${toggles.showShaderPreClip ? `<path d="${shaderPreClipPath}" fill="none" stroke="#93a6bd" stroke-width="0.4" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.85" />` : ""}
   ${toggles.showShaderPostFaceClip ? `<path d="${shaderPostFacePath}" fill="none" stroke="#475569" stroke-width="0.58" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.9" />` : ""}
   ${toggles.showShaderFinalClip ? `<path d="${shaderPostOcclusionPath}" fill="none" stroke="#0f172a" stroke-width="0.66" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.95" />` : ""}
@@ -176,17 +183,18 @@ export function buildExportSvg(scene, meta) {
   const title = meta?.title || "Iso Plot Export";
   const seed = meta?.seed ?? "unknown";
   const shaderEnabled = meta?.shaderEnabled !== false;
+  const shaderPenWidth = Math.max(0.2, Number(meta?.shaderPenWidth ?? scene.meta?.shaderPenWidth ?? 0.52));
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${format(metrics.width)}" height="${format(metrics.height)}" viewBox="0 0 ${format(metrics.width)} ${format(metrics.height)}">
   <title>${title}</title>
   <desc>Generated ${stamp} | seed ${seed}</desc>
+  ${shaderEnabled ? `<g id="pen_shader" fill="none" stroke="#222222" stroke-width="${format(shaderPenWidth)}" stroke-linecap="butt" stroke-linejoin="round">
+    <path d="${shaderPath}" />
+  </g>` : ""}
   <g id="pen_a_outline" fill="none" stroke="#111111" stroke-width="1.2" stroke-linecap="butt" stroke-linejoin="round">
     <path d="${outlinePath}" />
     <path d="${internalPath}" stroke-width="0.65" stroke="#444444" />
   </g>
-  ${shaderEnabled ? `<g id="pen_shader" fill="none" stroke="#222222" stroke-width="0.52" stroke-linecap="butt" stroke-linejoin="round">
-    <path d="${shaderPath}" />
-  </g>` : ""}
 </svg>`;
 }
