@@ -765,7 +765,8 @@ function applyLinesAreaProtection(rawDarkness, metrics, tuning) {
   const cappedDarkness = Math.min(rawDarkness, darknessCap);
   const requiredShortSide = tuning.minGapCount * tuning.minSpacing;
   const gapFit = clamp(metrics.minDim / Math.max(1e-6, requiredShortSide), 0, 1);
-  const adjustedDarkness = clamp(lerp(tuning.tinyFaceDarknessFloor, cappedDarkness, gapFit), 0, 1);
+  const tinyFaceTarget = Math.min(tuning.tinyFaceDarknessFloor, cappedDarkness);
+  const adjustedDarkness = clamp(lerp(tinyFaceTarget, cappedDarkness, gapFit), 0, 1);
 
   return {
     adjustedDarkness,
