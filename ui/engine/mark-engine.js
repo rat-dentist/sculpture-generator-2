@@ -18,6 +18,25 @@ function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
+function envFlag(name) {
+  if (typeof process === "undefined" || !process?.env) {
+    return false;
+  }
+  const raw = process.env[name];
+  if (typeof raw !== "string") {
+    return false;
+  }
+  const value = raw.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+function shaderFaceMetricsDebugEnabled(controls) {
+  if (Boolean(controls?.shaderFaceMetricsDebug)) {
+    return true;
+  }
+  return envFlag("ISO_PLOT_SHADER_DEBUG") || envFlag("ISO_PLOT_SHADER_FACE_DEBUG");
+}
+
 function evenlySample(items, count) {
   if (!Array.isArray(items) || items.length <= count || count <= 0) {
     return items || [];
@@ -1386,6 +1405,8 @@ export function buildStrokeScene(faces, controls, options = {}) {
   };
   const showOcclusionDebug = Boolean(controls.occlusionDebug) && !fastMode;
   const showShaderIntegrityDebug = Boolean(controls.shaderIntegrityDebug) && !fastMode;
+  const showShaderFaceMetricsDebug = shaderFaceMetricsDebugEnabled(controls) && !fastMode;
+  const shaderFaceMetrics = showShaderFaceMetricsDebug ? [] : null;
   const shaderIntegrity = {
     facesConsidered: 0,
     facesShaded: 0,
@@ -1487,6 +1508,8 @@ export function buildStrokeScene(faces, controls, options = {}) {
       ...shaderControls,
       faceStrokeBudget: perFaceBudget
     });
+    let selectedStyleId = shader.meta?.styleId || controls.shaderPreset || "off";
+    let selectedLinesMetrics = shader.meta?.linesMetrics || null;
     shaderIntegrity.marksGeneratedPreClip += shader.stats?.emittedPreClip || 0;
     shaderDebug.cellsTested += shader.stats?.cellsTested || 0;
     shaderDebug.emittedPreClip += shader.stats?.emittedPreClip || 0;
@@ -1548,6 +1571,8 @@ export function buildStrokeScene(faces, controls, options = {}) {
       shaderIntegrity.marksRemovedMinSegment += retryFaceClip.removedMinSegment;
       if (retryFaceClip.strokes.length > faceClip.strokes.length) {
         faceClip = retryFaceClip;
+        selectedStyleId = retry.meta?.styleId || selectedStyleId;
+        selectedLinesMetrics = retry.meta?.linesMetrics || selectedLinesMetrics;
       }
     }
 
@@ -1575,6 +1600,15 @@ export function buildStrokeScene(faces, controls, options = {}) {
     const allowed = Math.max(0, shaderBudget.maxStrokes - shaderBudget.used);
     const kept = evenlySample(faceClip.strokes, allowed);
     shaderIntegrity.marksRemovedBudget += Math.max(0, faceClip.strokes.length - kept.length);
+    if (shaderFaceMetrics && selectedLinesMetrics) {
+      shaderFaceMetrics.push({
+        ...selectedLinesMetrics,
+        style: selectedStyleId,
+        face_draw_order: face.drawOrder,
+        marks_post_face_clip: faceClip.strokes.length,
+        marks_kept: kept.length
+      });
+    }
     layers.shader.push(...kept);
     shaderBudget.used += kept.length;
     if (kept.length < faceClip.strokes.length) {
@@ -1694,6 +1728,13 @@ export function buildStrokeScene(faces, controls, options = {}) {
       cellsTested: shaderDebug.cellsTested,
       strokesBeforeClip: shaderDebug.emittedPostClip,
       strokesAfterOcclusion: shaderOcclusion.strokes.length
+    });
+  }
+  if (showShaderFaceMetricsDebug && controls.shaderPreset !== "off" && shaderFaceMetrics?.length) {
+    // eslint-disable-next-line no-console
+    console.debug("shader-face-metrics", {
+      preset: controls.shaderPreset,
+      faces: shaderFaceMetrics
     });
   }
   const segmentsBeforeMerge = (outlineOcclusion.debug?.segmentsBefore || 0) + (internalOcclusion.debug?.segmentsBefore || 0);

@@ -10,6 +10,14 @@ function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
+function roundDebug(value, digits = 4) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  const scale = 10 ** digits;
+  return Math.round(value * scale) / scale;
+}
+
 function sampleStops(stops, t) {
   if (!Array.isArray(stops) || !stops.length) {
     return 0;
@@ -94,6 +102,7 @@ function faceMetrics(face) {
   const bounds = boundsFromPolygons([face.points || []]);
   const width = Math.max(1e-6, bounds.width);
   const height = Math.max(1e-6, bounds.height);
+  const minDim = Math.max(1e-6, Math.min(width, height));
   const diag = Math.max(1e-6, Math.hypot(width, height));
   const area = Math.max(1e-6, polygonArea(face.points || []));
 
@@ -101,6 +110,7 @@ function faceMetrics(face) {
     bounds,
     width,
     height,
+    minDim,
     diag,
     area,
     centroid: polygonCentroid(face.points || [])
@@ -719,7 +729,21 @@ function linesStyle(face, toneIndex, faceMeta, rng, controls) {
   spacing = tightenGapForCoverage(face, angle, spacing, minLines);
 
   const candidates = hatchCandidates(face, metrics, angle, spacing, cap, 0.07, rng);
-  return ensureMinimumCandidates(makeResult(candidates, 0, { spacing, tone: toneLevel, diag: metrics.diag, calibratedTone: faceMeta.calibratedTone }), face, toneLevel);
+  return ensureMinimumCandidates(makeResult(candidates, 0, {
+    spacing,
+    tone: toneLevel,
+    diag: metrics.diag,
+    calibratedTone: faceMeta.calibratedTone,
+    linesMetrics: {
+      face_id: face.id,
+      projected_area_2d: roundDebug(metrics.area),
+      min_dimension_2d: roundDebug(metrics.minDim),
+      shade_value: roundDebug(faceMeta.calibratedTone),
+      spacing: roundDebug(spacing),
+      line_count: candidates.length,
+      stroke_width: roundDebug(Math.max(0.05, Number(controls.shaderPenWidth ?? 0.56)))
+    }
+  }), face, toneLevel);
 }
 
 function crosshatchStyle(face, toneIndex, faceMeta, rng, controls) {
@@ -1127,7 +1151,9 @@ export function generateFaceShaderStrokes(face, controls) {
       spacing: Number(result.meta?.spacing) || 0,
       tone: Number(result.meta?.tone) || toneIndex,
       calibratedTone: Number(result.meta?.calibratedTone ?? calibratedTone) || calibratedTone,
-      diag: Number(result.meta?.diag) || 0
+      diag: Number(result.meta?.diag) || 0,
+      styleId: style?.id || styleId || "off",
+      linesMetrics: result.meta?.linesMetrics || null
     }
   };
 }
