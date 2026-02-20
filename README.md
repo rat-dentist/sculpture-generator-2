@@ -50,6 +50,17 @@ npm run dev
 npm run test:stl
 ```
 
+## Lines Shader Tuning
+
+The `Lines` shader now uses area-aware density controls aimed at pen plotting:
+
+- `spacing_min`: hard lower bound for hatch spacing; resolved as `max(linesMinSpacing, shaderPenWidth * linesMinSpacingPenFactor)`. This prevents stroke overlap/black fills.
+- `S_small` / `S_large`: projected-face scale thresholds (`linesSmallFaceScale`, `linesLargeFaceScale`) used by a smoothstep area protection factor. Faces near `S_small` are clamped harder; faces near `S_large` are mostly unmodified.
+- tone curve (`linesToneGamma`, `linesToneContrast`, `linesToneMinDarkness`, `linesToneMaxDarkness`): compresses tonal extremes into a mid-range before hatch spacing is computed, so dark/light separation remains readable without near-black or near-white blowouts.
+- small-face stroke caps: short-side line limits and coverage caps keep tiny polygons from accumulating too much ink.
+
+These parameters are internal defaults today (no dedicated UI controls yet), but can be passed through render controls for scripted runs.
+
 ## VS Code one-click launch
 
 - NPM Scripts panel: run `dev` (play icon).
