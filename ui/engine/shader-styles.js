@@ -741,6 +741,23 @@ function resolveLinesAreaTuning(controls) {
   };
 }
 
+function resolveLinesToneCurve(controls) {
+  return {
+    gamma: clamp(Number(controls.linesToneGamma ?? 1), 0.45, 2.5),
+    contrast: clamp(Number(controls.linesToneContrast ?? 0.68), 0.2, 1.4),
+    minDarkness: clamp(Number(controls.linesToneMinDarkness ?? 0.18), 0, 0.9),
+    maxDarkness: clamp(Number(controls.linesToneMaxDarkness ?? 0.82), 0.1, 0.98)
+  };
+}
+
+function compressLinesDarkness(rawDarkness, toneCurve) {
+  const minDarkness = Math.min(toneCurve.minDarkness, toneCurve.maxDarkness - 1e-5);
+  const maxDarkness = Math.max(toneCurve.maxDarkness, minDarkness + 1e-5);
+  let t = Math.pow(clamp(rawDarkness, 0, 1), toneCurve.gamma);
+  t = clamp((t - 0.5) * toneCurve.contrast + 0.5, 0, 1);
+  return clamp(lerp(minDarkness, maxDarkness, t), 0, 1);
+}
+
 function applyLinesAreaProtection(rawDarkness, metrics, tuning) {
   const scale = Math.min(Math.sqrt(metrics.area), metrics.minDim);
   const areaProtection = smoothstep(tuning.smallScale, tuning.largeScale, scale);
@@ -762,8 +779,10 @@ function applyLinesAreaProtection(rawDarkness, metrics, tuning) {
 function linesStyle(face, toneIndex, faceMeta, rng, controls) {
   const metrics = faceMetrics(face);
   const rawDarkness = faceMeta.darkness;
+  const toneCurve = resolveLinesToneCurve(controls);
+  const toneDarkness = compressLinesDarkness(rawDarkness, toneCurve);
   const areaTuning = resolveLinesAreaTuning(controls);
-  const areaProtection = applyLinesAreaProtection(rawDarkness, metrics, areaTuning);
+  const areaProtection = applyLinesAreaProtection(toneDarkness, metrics, areaTuning);
   const darkness = areaProtection.adjustedDarkness;
   const toneLevel = clamp(Math.round(darkness * 5), 0, 5);
   const baseCap = strokeCapForFace(controls, faceMeta.calibratedTone, metrics, 1.44);
@@ -809,6 +828,7 @@ function linesStyle(face, toneIndex, faceMeta, rng, controls) {
       min_dimension_2d: roundDebug(metrics.minDim),
       shade_value: roundDebug(faceMeta.calibratedTone),
       darkness_raw: roundDebug(rawDarkness),
+      darkness_tone: roundDebug(toneDarkness),
       darkness_adjusted: roundDebug(darkness),
       area_protection: roundDebug(areaProtection.areaProtection),
       min_spacing: roundDebug(areaTuning.minSpacing),
