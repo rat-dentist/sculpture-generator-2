@@ -152,8 +152,113 @@ function testCubeProjectionAndShaderCoverage() {
   }
 }
 
+function testLinesAreaAwareSpacingAndCoverage() {
+  const controls = {
+    seed: 2026,
+    shaderPreset: "lines",
+    shaderDensity: 1,
+    shaderPenWidth: 0.56,
+    maxStrokes: 7000,
+    minSegment: 0.8,
+    shaderCoarse: false
+  };
+
+  const faces = [
+    {
+      id: 801,
+      shadeKey: "z_neg",
+      toneIndex: 0,
+      points: [{ x: 0, y: 0 }, { x: 24, y: 0 }, { x: 24, y: 24 }, { x: 0, y: 24 }]
+    },
+    {
+      id: 802,
+      shadeKey: "z_neg",
+      toneIndex: 0,
+      points: [{ x: 0, y: 0 }, { x: 6, y: 0 }, { x: 6, y: 6 }, { x: 0, y: 6 }]
+    },
+    {
+      id: 803,
+      shadeKey: "z_neg",
+      toneIndex: 0,
+      points: [{ x: 0, y: 0 }, { x: 2.5, y: 0 }, { x: 2.5, y: 2.5 }, { x: 0, y: 2.5 }]
+    },
+    {
+      id: 804,
+      shadeKey: "z_neg",
+      toneIndex: 0,
+      points: [{ x: 0, y: 0 }, { x: 1.3, y: 0 }, { x: 1.3, y: 1.3 }, { x: 0, y: 1.3 }]
+    }
+  ];
+
+  let tinyFacesChecked = 0;
+  for (const face of faces) {
+    const shader = generateFaceShaderStrokes(face, controls);
+    const metrics = shader.meta?.linesMetrics;
+    if (!metrics) {
+      throw new Error(`Missing linesMetrics for face ${face.id}`);
+    }
+    if (metrics.spacing + 1e-6 < metrics.min_spacing) {
+      throw new Error(`Face ${face.id} spacing ${metrics.spacing} below minimum ${metrics.min_spacing}`);
+    }
+
+    const coverage = (metrics.line_count * Math.max(0.05, metrics.stroke_width)) / Math.max(1e-6, metrics.min_dimension_2d);
+    if (metrics.min_dimension_2d <= 3) {
+      tinyFacesChecked += 1;
+      if (coverage > 0.78) {
+        throw new Error(`Tiny face ${face.id} over-coverage ${coverage.toFixed(3)}`);
+      }
+      if (metrics.line_count > 6) {
+        throw new Error(`Tiny face ${face.id} emitted too many lines: ${metrics.line_count}`);
+      }
+    }
+  }
+
+  if (tinyFacesChecked < 2) {
+    throw new Error(`Expected to validate at least two tiny faces, got ${tinyFacesChecked}`);
+  }
+}
+
+function testLinesToneCompression() {
+  const controls = {
+    seed: 303,
+    shaderPreset: "lines",
+    shaderDensity: 1,
+    shaderPenWidth: 0.56,
+    maxStrokes: 7000,
+    minSegment: 0.8,
+    shaderCoarse: false
+  };
+
+  const darkness = [];
+  for (let toneIndex = 0; toneIndex <= 5; toneIndex += 1) {
+    const shader = generateFaceShaderStrokes(
+      {
+        id: 900 + toneIndex,
+        shadeKey: "z_neg",
+        toneIndex,
+        points: [{ x: 0, y: 0 }, { x: 14, y: 0 }, { x: 14, y: 14 }, { x: 0, y: 14 }]
+      },
+      controls
+    );
+    const metrics = shader.meta?.linesMetrics;
+    darkness.push(metrics.darkness_tone);
+  }
+
+  for (let i = 1; i < darkness.length; i += 1) {
+    if (!(darkness[i - 1] >= darkness[i])) {
+      throw new Error(`Expected monotonic Lines darkness, got ${darkness.join(", ")}`);
+    }
+  }
+
+  if (darkness[0] > 0.9 || darkness[darkness.length - 1] < 0.1) {
+    throw new Error(`Unexpected Lines tone compression range: ${darkness.join(", ")}`);
+  }
+}
+
 testSixTonePalette();
 testToneIndexMapping();
 testShaderStylesEmit();
 testCubeProjectionAndShaderCoverage();
+testLinesAreaAwareSpacingAndCoverage();
+testLinesToneCompression();
 console.log("shader regression ok");
