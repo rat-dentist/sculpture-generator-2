@@ -10,6 +10,14 @@ function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
+function smoothstep(edge0, edge1, value) {
+  if (edge1 <= edge0 + 1e-9) {
+    return value >= edge1 ? 1 : 0;
+  }
+  const t = clamp((value - edge0) / (edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
 function roundDebug(value, digits = 4) {
   if (!Number.isFinite(value)) {
     return 0;
@@ -712,23 +720,84 @@ function baseHatchAngle(face) {
   return 0;
 }
 
+function resolveLinesAreaTuning(controls) {
+  const penWidth = Math.max(0.05, Number(controls.shaderPenWidth ?? 0.56));
+  const minSpacingPlot = clamp(Number(controls.linesMinSpacing ?? 0.62), 0.2, 8);
+  const minSpacingPenFactor = clamp(Number(controls.linesMinSpacingPenFactor ?? 1.55), 1, 4);
+
+  return {
+    smallScale: clamp(Number(controls.linesSmallFaceScale ?? 3.2), 0.4, 60),
+    largeScale: clamp(Number(controls.linesLargeFaceScale ?? 13.5), 0.8, 120),
+    tinyFaceDarknessCap: clamp(Number(controls.linesTinyFaceDarknessCap ?? 0.56), 0.1, 0.92),
+    largeFaceDarknessCap: clamp(Number(controls.linesLargeFaceDarknessCap ?? 0.88), 0.2, 0.98),
+    tinyFaceDarknessFloor: clamp(Number(controls.linesTinyFaceDarknessFloor ?? 0.2), 0, 0.8),
+    minSpacing: Math.max(minSpacingPlot, penWidth * minSpacingPenFactor),
+    minGapCount: clamp(Number(controls.linesMinGapCount ?? 4), 2, 8),
+    maxLinesSmall: clamp(Math.round(Number(controls.linesMaxLinesSmallFace ?? 4)), 2, 20),
+    maxLinesLarge: clamp(Math.round(Number(controls.linesMaxLinesLargeFace ?? 26)), 4, 90),
+    coverageCapSmall: clamp(Number(controls.linesCoverageCapSmall ?? 0.52), 0.1, 0.95),
+    coverageCapLarge: clamp(Number(controls.linesCoverageCapLarge ?? 0.84), 0.2, 0.98),
+    penWidth
+  };
+}
+
+function applyLinesAreaProtection(rawDarkness, metrics, tuning) {
+  const scale = Math.min(Math.sqrt(metrics.area), metrics.minDim);
+  const areaProtection = smoothstep(tuning.smallScale, tuning.largeScale, scale);
+  const darknessCap = lerp(tuning.tinyFaceDarknessCap, tuning.largeFaceDarknessCap, areaProtection);
+  const cappedDarkness = Math.min(rawDarkness, darknessCap);
+  const requiredShortSide = tuning.minGapCount * tuning.minSpacing;
+  const gapFit = clamp(metrics.minDim / Math.max(1e-6, requiredShortSide), 0, 1);
+  const adjustedDarkness = clamp(lerp(tuning.tinyFaceDarknessFloor, cappedDarkness, gapFit), 0, 1);
+
+  return {
+    adjustedDarkness,
+    areaProtection,
+    darknessCap,
+    scale,
+    gapFit
+  };
+}
+
 function linesStyle(face, toneIndex, faceMeta, rng, controls) {
   const metrics = faceMetrics(face);
-  const darkness = faceMeta.darkness;
+  const rawDarkness = faceMeta.darkness;
+  const areaTuning = resolveLinesAreaTuning(controls);
+  const areaProtection = applyLinesAreaProtection(rawDarkness, metrics, areaTuning);
+  const darkness = areaProtection.adjustedDarkness;
   const toneLevel = clamp(Math.round(darkness * 5), 0, 5);
-  const cap = strokeCapForFace(controls, faceMeta.calibratedTone, metrics, 1.44);
-  const spacingByDarkness = [2.8, 2.25, 1.78, 1.42, 1.12, 0.86];
-  const minLinesByDarkness = [12, 16, 22, 30, 40, 56];
+  const baseCap = strokeCapForFace(controls, faceMeta.calibratedTone, metrics, 1.44);
+  const spacingByDarkness = [3.16, 2.62, 2.16, 1.8, 1.46, 1.18];
 
   let spacing = sampleStops(spacingByDarkness, darkness) * spacingScale(controls);
-  spacing = clamp(spacing, 0.42, metrics.diag * 0.7);
+  spacing = clamp(spacing, areaTuning.minSpacing, metrics.diag * 0.76);
+  const maxLinesShortSide = Math.max(
+    2,
+    Math.round(lerp(areaTuning.maxLinesSmall, areaTuning.maxLinesLarge, areaProtection.areaProtection))
+  );
+  const spacingForShortSide = metrics.minDim / Math.max(1, maxLinesShortSide - 1);
+  if (Number.isFinite(spacingForShortSide) && spacingForShortSide > 0) {
+    spacing = Math.max(spacing, spacingForShortSide);
+  }
 
-  const minLines = Math.round(sampleStops(minLinesByDarkness, darkness));
   const rawAngle = baseHatchAngle(face);
-  const angle = chooseHatchAngle(face, rawAngle, spacing, minLines);
-  spacing = tightenGapForCoverage(face, angle, spacing, minLines);
+  const orientationLines = Math.max(3, Math.round(lerp(3, 12, darkness)));
+  const angle = chooseHatchAngle(face, rawAngle, spacing, orientationLines);
+  const span = projectionSpan(face.points, angle);
+  const coverageCap = lerp(areaTuning.coverageCapSmall, areaTuning.coverageCapLarge, areaProtection.areaProtection);
+  const effectiveStrokeWidth = Math.min(areaTuning.penWidth, spacing * 0.82);
+  const maxLinesByCoverage = Math.max(
+    1,
+    Math.floor((coverageCap * metrics.minDim) / Math.max(0.05, effectiveStrokeWidth))
+  );
+  const maxLineCount = Math.max(1, Math.min(baseCap, maxLinesShortSide, maxLinesByCoverage));
+  if (span > 1e-6 && maxLineCount > 1) {
+    const spacingForCap = span / Math.max(1, maxLineCount - 1);
+    spacing = Math.max(spacing, spacingForCap);
+  }
+  spacing = clamp(spacing, areaTuning.minSpacing, Math.max(areaTuning.minSpacing, metrics.diag * 0.76));
 
-  const candidates = hatchCandidates(face, metrics, angle, spacing, cap, 0.07, rng);
+  const candidates = hatchCandidates(face, metrics, angle, spacing, maxLineCount, 0.07, rng);
   return ensureMinimumCandidates(makeResult(candidates, 0, {
     spacing,
     tone: toneLevel,
@@ -739,9 +808,15 @@ function linesStyle(face, toneIndex, faceMeta, rng, controls) {
       projected_area_2d: roundDebug(metrics.area),
       min_dimension_2d: roundDebug(metrics.minDim),
       shade_value: roundDebug(faceMeta.calibratedTone),
+      darkness_raw: roundDebug(rawDarkness),
+      darkness_adjusted: roundDebug(darkness),
+      area_protection: roundDebug(areaProtection.areaProtection),
+      min_spacing: roundDebug(areaTuning.minSpacing),
       spacing: roundDebug(spacing),
       line_count: candidates.length,
-      stroke_width: roundDebug(Math.max(0.05, Number(controls.shaderPenWidth ?? 0.56)))
+      stroke_width: roundDebug(effectiveStrokeWidth),
+      max_lines_short_side: maxLinesShortSide,
+      max_lines_coverage: maxLinesByCoverage
     }
   }), face, toneLevel);
 }
